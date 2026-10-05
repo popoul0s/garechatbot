@@ -1,16 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, LngLatBoundsLike, Map as MlMap } from "maplibre-gl";
-import { formatMinutes, PoiNearStation, Recommendation, TAG_LABELS } from "../api";
+import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
+import { categoryOf, CATEGORIES, formatMinutes, PoiNearStation, Recommendation, Station } from "../api";
+
+/**
+ * La carte n'affiche que ce qui sert à l'étape en cours :
+ * - overview : gares accessibles depuis le départ, colorées par temps de train ;
+ * - results  : le départ + les destinations proposées, numérotées et nommées ;
+ * - detail   : la gare choisie + ses lieux, numérotés comme dans la liste.
+ */
+export type MapMode = "overview" | "results" | "detail";
 
 interface Props {
+  mode: MapMode;
   stations: GeoJSON.FeatureCollection | null;
   lines: GeoJSON.FeatureCollection | null;
+  originName: string | null;
   results: Recommendation[];
-  focusedStationId: number | null;
-  selectedStationId: number | null;
-  stationPois: PoiNearStation[];
+  detailStation: Station | null;
+  detailPois: PoiNearStation[];
+  focusedPoiId: number | null;
   onSelectStation: (id: number) => void;
+  onSelectPoi: (id: number) => void;
   visible: boolean;
 }
 
@@ -29,244 +40,263 @@ const STYLE: maplibregl.StyleSpecification = {
       maxzoom: 19,
     },
   },
-  layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.4 } }],
+  layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.5 } }],
 };
 
-const TAG_COLORS: Record<string, string> = {
-  randonnee: "#15803d",
-  nature: "#22c55e",
-  montagne: "#78716c",
-  eau: "#0ea5e9",
-  musee: "#7c3aed",
-  culture: "#a855f7",
-  patrimoine: "#b45309",
-  famille: "#ec4899",
-  loisirs: "#f97316",
-  panorama: "#0d9488",
-};
-
-function poiFeatures(pois: PoiNearStation[], result: boolean): GeoJSON.Feature[] {
-  return pois.map((p) => ({
-    type: "Feature",
-    geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-    properties: {
-      id: p.id,
-      name: p.name,
-      tags: p.tags.join(","),
-      color: TAG_COLORS[p.tags[0]] ?? "#64748b",
-      description: p.description ?? "",
-      url: p.url ?? "",
-      walk: p.walk_minutes,
-      source: p.source,
-      result,
-    },
-  }));
-}
+const TIME_STEPS = [
+  { max: 30, color: "#16a34a", label: "30 min" },
+  { max: 60, color: "#84cc16", label: "1h" },
+  { max: 90, color: "#f59e0b", label: "1h30" },
+  { max: 120, color: "#f97316", label: "2h" },
+  { max: Infinity, color: "#dc2626", label: "plus" },
+];
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
+function el(className: string, html: string, title?: string): HTMLDivElement {
+  const d = document.createElement("div");
+  d.className = className;
+  d.innerHTML = html;
+  if (title) d.title = title;
+  return d;
+}
+
+function poiPopupHtml(p: PoiNearStation): string {
+  const cat = categoryOf(p.tags);
+  return (
+    `<strong>${escapeHtml(p.name)}</strong><br/>` +
+    `<span style="color:${cat.color}">${cat.label}</span> · 🚶 ${p.walk_minutes} min de la gare` +
+    (p.description ? `<p>${escapeHtml(p.description.slice(0, 200))}</p>` : "") +
+    (p.url ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noreferrer">Site web</a>` : "")
+  );
+}
+
+function fit(m: MlMap, pts: [number, number][], maxZoom: number) {
+  if (pts.length === 0) return;
+  const lons = pts.map((p) => p[0]);
+  const lats = pts.map((p) => p[1]);
+  m.fitBounds(
+    [
+      [Math.min(...lons), Math.min(...lats)],
+      [Math.max(...lons), Math.max(...lats)],
+    ],
+    // marge basse plus grande : la légende occupe le bas de la carte
+    { padding: { top: 60, right: 60, bottom: 150, left: 60 }, maxZoom, duration: 700 },
+  );
+}
+
 export default function MapView(props: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<MlMap | null>(null);
-  const ready = useRef(false);
-  const pendingApply = useRef<(() => void) | null>(null);
-  const markers = useRef<maplibregl.Marker[]>([]);
-  const onSelect = useRef(props.onSelectStation);
-  onSelect.current = props.onSelectStation;
-
-  // Création de la carte et des couches
+  const [ready, setReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const markers = useRef<maplibregl.Marker[]>([]);
+  const poiMarkers = useRef(new Map<number, maplibregl.Marker>());
+  const popup = useRef<maplibregl.Popup | null>(null);
+  const cb = useRef(props);
+  cb.current = props;
 
+  // Création de la carte (une seule fois)
   useEffect(() => {
     let m: MlMap;
     try {
-      m = new maplibregl.Map({
-        container: container.current!,
-        style: STYLE,
-        center: [5.72, 45.19],
-        zoom: 8,
-      });
+      m = new maplibregl.Map({ container: container.current!, style: STYLE, center: [5.72, 45.19], zoom: 8 });
     } catch (e) {
-      // Navigateur sans WebGL (ex. aperçu intégré de VS Code) : on garde le reste de l'application utilisable.
+      // Navigateur sans WebGL (ex. aperçu intégré de VS Code) : le reste de l'application reste utilisable.
       console.error(e);
       setMapError((e as Error).message);
       return;
     }
     map.current = m;
-    m.addControl(new maplibregl.NavigationControl(), "top-right");
-
+    m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     m.on("load", () => {
       m.addSource("lines", { type: "geojson", data: EMPTY });
       m.addSource("stations", { type: "geojson", data: EMPTY });
-      m.addSource("pois", { type: "geojson", data: EMPTY });
-
       m.addLayer({
         id: "lines",
         type: "line",
         source: "lines",
-        paint: { "line-color": ["coalesce", ["get", "color"], "#475569"], "line-width": 2, "line-opacity": 0.6 },
+        paint: { "line-color": "#64748b", "line-width": 1.5, "line-opacity": 0.35 },
       });
       m.addLayer({
         id: "stations",
         type: "circle",
         source: "stations",
         paint: {
-          // gares inaccessibles depuis l'origine : petites et discrètes
-          "circle-radius": ["case", ["get", "is_origin"], 9, ["get", "selected"], 9, ["==", ["get", "minutes"], null], 3, 5],
-          "circle-opacity": ["case", ["==", ["get", "minutes"], null], 0.5, 1],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 4, 12, 8],
           "circle-color": [
             "case",
-            ["==", ["get", "minutes"], null], "#94a3b8",
-            ["<=", ["get", "minutes"], 30], "#16a34a",
-            ["<=", ["get", "minutes"], 60], "#84cc16",
-            ["<=", ["get", "minutes"], 90], "#f59e0b",
-            ["<=", ["get", "minutes"], 120], "#f97316",
-            "#dc2626",
-          ],
-          "circle-stroke-width": ["case", ["get", "selected"], 4, ["get", "is_origin"], 3, 1],
-          "circle-stroke-color": ["case", ["get", "selected"], "#0f766e", "#fafaf9"],
-        },
-      });
-      m.addLayer({
-        id: "pois",
-        type: "circle",
-        source: "pois",
-        paint: {
-          "circle-radius": ["case", ["get", "result"], 7, 5],
-          "circle-color": ["get", "color"],
+            ...TIME_STEPS.slice(0, -1).flatMap((s) => [["<=", ["get", "minutes"], s.max], s.color]),
+            TIME_STEPS[TIME_STEPS.length - 1].color,
+          ] as unknown as maplibregl.ExpressionSpecification,
           "circle-stroke-width": 1.5,
           "circle-stroke-color": "#fafaf9",
         },
       });
-
       m.on("click", "stations", (e) => {
-        const f = e.features?.[0];
-        if (!f) return;
-        const p = f.properties as Record<string, unknown>;
-        const minutes = p.minutes === null || p.minutes === undefined || p.minutes === "null" ? null : Number(p.minutes);
-        const changes = Number(p.nb_changes ?? 0);
-        new maplibregl.Popup({ offset: 8 })
-          .setLngLat(e.lngLat)
-          .setHTML(
-            `<strong>${escapeHtml(String(p.name))}</strong><br/>` +
-              (minutes !== null
-                ? `${formatMinutes(minutes)} depuis l'origine${changes > 0 ? ` (${changes} corresp.)` : " (direct)"}<br/>`
-                : "Temps de trajet inconnu<br/>") +
-              `${p.poi_count} points d'intérêt à proximité` +
-              (p.pmr === true ? "<br/>♿ Accessible PMR" : ""),
-          )
-          .addTo(m);
-        onSelect.current(Number(p.id));
+        const p = e.features?.[0]?.properties as Record<string, unknown> | undefined;
+        if (p) cb.current.onSelectStation(Number(p.id));
       });
-      m.on("click", "pois", (e) => {
-        const p = e.features?.[0]?.properties as Record<string, string> | undefined;
+      m.on("mousemove", "stations", (e) => {
+        const p = e.features?.[0]?.properties as Record<string, unknown> | undefined;
         if (!p) return;
-        const tags = p.tags
-          .split(",")
-          .filter(Boolean)
-          .map((t) => TAG_LABELS[t] ?? t)
-          .join(" · ");
-        new maplibregl.Popup({ offset: 8 })
+        m.getCanvas().style.cursor = "pointer";
+        popup.current?.remove();
+        popup.current = new maplibregl.Popup({ closeButton: false, offset: 10 })
           .setLngLat(e.lngLat)
           .setHTML(
-            `<strong>${escapeHtml(p.name)}</strong><br/><em>${escapeHtml(tags)}</em><br/>` +
-              `🚶 ${p.walk} min depuis la gare<br/>` +
-              (p.description ? `<p>${escapeHtml(p.description.slice(0, 220))}</p>` : "") +
-              (p.url ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noreferrer">Site web</a><br/>` : "") +
-              `<small>Source : ${escapeHtml(p.source)}</small>`,
+            `<strong>${escapeHtml(String(p.name))}</strong><br/>🚆 ${formatMinutes(Number(p.minutes))}` +
+              `<br/><small>Cliquer pour voir ce qu'il y a autour</small>`,
           )
           .addTo(m);
       });
-      for (const layer of ["stations", "pois"]) {
-        m.on("mouseenter", layer, () => (m.getCanvas().style.cursor = "pointer"));
-        m.on("mouseleave", layer, () => (m.getCanvas().style.cursor = ""));
-      }
-      ready.current = true;
-      pendingApply.current?.();
+      m.on("mouseleave", "stations", () => {
+        m.getCanvas().style.cursor = "";
+        popup.current?.remove();
+      });
+      setReady(true);
     });
     return () => m.remove();
   }, []);
 
-  // Mise à jour des données (attend que la carte soit chargée)
+  // Contenu de la carte selon l'étape
   useEffect(() => {
     const m = map.current;
-    if (!m) return;
-    const apply = () => {
-      const stations = props.stations ?? EMPTY;
-      (m.getSource("stations") as GeoJSONSource).setData({
-        ...stations,
-        features: stations.features.map((f) => ({
-          ...f,
-          properties: { ...f.properties, selected: f.properties?.id === props.selectedStationId },
-        })),
-      });
-      (m.getSource("lines") as GeoJSONSource).setData(props.lines ?? EMPTY);
-      const resultPois = props.results.flatMap((r) => poiFeatures(r.pois, true));
-      const resultIds = new Set(resultPois.map((f) => f.properties!.id));
-      const explorerPois = poiFeatures(props.stationPois, false).filter((f) => !resultIds.has(f.properties!.id));
-      (m.getSource("pois") as GeoJSONSource).setData({
-        type: "FeatureCollection",
-        features: [...explorerPois, ...resultPois],
-      });
-    };
-    if (ready.current) apply();
-    else pendingApply.current = apply;
-  }, [props.stations, props.lines, props.results, props.stationPois, props.selectedStationId]);
+    if (!m || !ready) return;
+    const { mode, stations, lines, results, detailStation, detailPois, originName } = props;
 
-  // Marqueurs numérotés des recommandations + cadrage
-  useEffect(() => {
-    const m = map.current;
-    if (!m) return;
     markers.current.forEach((mk) => mk.remove());
-    markers.current = props.results.map((r, i) => {
-      const el = document.createElement("div");
-      el.className = "result-marker";
-      el.textContent = String(i + 1);
-      el.title = r.station.name;
-      el.addEventListener("click", () => onSelect.current(r.station.id));
-      return new maplibregl.Marker({ element: el }).setLngLat([r.station.lon, r.station.lat]).addTo(m);
-    });
-    if (props.results.length > 0) {
-      const pts = props.results.flatMap((r) => [[r.station.lon, r.station.lat], ...r.pois.map((p) => [p.lon, p.lat])]);
-      const lons = pts.map((p) => p[0]);
-      const lats = pts.map((p) => p[1]);
-      const bounds: LngLatBoundsLike = [
-        [Math.min(...lons), Math.min(...lats)],
-        [Math.max(...lons), Math.max(...lats)],
-      ];
-      m.fitBounds(bounds, { padding: 60, maxZoom: 13, duration: 800 });
-    }
-  }, [props.results]);
+    markers.current = [];
+    poiMarkers.current.forEach((mk) => mk.remove());
+    poiMarkers.current.clear();
+    popup.current?.remove();
 
-  // Centrage sur une recommandation ou une gare choisie
+    const origin = stations?.features.find((f) => f.properties?.is_origin);
+    const originLngLat = (origin?.geometry as GeoJSON.Point | undefined)?.coordinates as [number, number] | undefined;
+    const addMarker = (div: HTMLElement, lngLat: [number, number], anchor: maplibregl.PositionAnchor = "center") =>
+      markers.current.push(new maplibregl.Marker({ element: div, anchor }).setLngLat(lngLat).addTo(m));
+
+    // gares : seulement en exploration, et seulement celles accessibles depuis le départ
+    const reachable = (stations?.features ?? []).filter(
+      (f) => f.properties?.minutes != null && !f.properties?.is_origin,
+    );
+    (m.getSource("stations") as GeoJSONSource).setData(
+      mode === "overview" ? { type: "FeatureCollection", features: reachable } : EMPTY,
+    );
+    (m.getSource("lines") as GeoJSONSource).setData(mode === "overview" ? (lines ?? EMPTY) : EMPTY);
+
+    if (originLngLat && mode !== "detail") {
+      addMarker(el("origin-marker", `Départ · ${escapeHtml(originName ?? "")}`), originLngLat);
+    }
+
+    if (mode === "overview") {
+      if (originLngLat) m.flyTo({ center: originLngLat, zoom: 8.5, duration: 700 });
+    }
+
+    if (mode === "results") {
+      results.forEach((r, i) => {
+        const div = el(
+          "dest-marker",
+          `<span class="n">${i + 1}</span><span class="label">${escapeHtml(r.station.name)}</span>`,
+          "Voir ce qu'il y a autour",
+        );
+        div.addEventListener("click", () => cb.current.onSelectStation(r.station.id));
+        addMarker(div, [r.station.lon, r.station.lat], "left");
+      });
+      fit(
+        m,
+        [...(originLngLat ? [originLngLat] : []), ...results.map((r) => [r.station.lon, r.station.lat] as [number, number])],
+        11,
+      );
+    }
+
+    if (mode === "detail" && detailStation) {
+      // étiquette au-dessus de la gare (ancre en bas) pour ne pas masquer les lieux voisins
+      addMarker(el("station-marker", `🚆 ${escapeHtml(detailStation.name)}`), [detailStation.lon, detailStation.lat], "bottom");
+      detailPois.forEach((p, i) => {
+        const cat = categoryOf(p.tags);
+        const div = el("poi-marker", String(i + 1), p.name);
+        div.style.background = cat.color;
+        div.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          cb.current.onSelectPoi(p.id);
+        });
+        poiMarkers.current.set(
+          p.id,
+          new maplibregl.Marker({ element: div }).setLngLat([p.lon, p.lat]).addTo(m),
+        );
+      });
+      fit(m, [[detailStation.lon, detailStation.lat], ...detailPois.map((p) => [p.lon, p.lat] as [number, number])], 15);
+    }
+  }, [ready, props.mode, props.stations, props.lines, props.results, props.detailStation, props.detailPois]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lieu sélectionné (depuis la liste ou la carte) : on le montre et on affiche sa fiche
   useEffect(() => {
     const m = map.current;
-    if (!m || props.focusedStationId === null) return;
-    const r = props.results.find((x) => x.station.id === props.focusedStationId);
-    const f = props.stations?.features.find((x) => x.properties?.id === props.focusedStationId);
-    const coords = r
-      ? [r.station.lon, r.station.lat]
-      : ((f?.geometry as GeoJSON.Point | undefined)?.coordinates ?? null);
-    if (coords) m.flyTo({ center: coords as [number, number], zoom: 13, duration: 800 });
-  }, [props.focusedStationId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!m || !ready) return;
+    poiMarkers.current.forEach((mk, id) => mk.getElement().classList.toggle("active", id === props.focusedPoiId));
+    const p = props.detailPois.find((x) => x.id === props.focusedPoiId);
+    if (!p) return;
+    popup.current?.remove();
+    popup.current = new maplibregl.Popup({ offset: 16, maxWidth: "260px" })
+      .setLngLat([p.lon, p.lat])
+      .setHTML(poiPopupHtml(p))
+      .addTo(m);
+    m.easeTo({ center: [p.lon, p.lat], duration: 500 });
+  }, [ready, props.focusedPoiId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Le conteneur est masqué sur mobile quand un autre onglet est actif : on recalcule la taille.
+  // Le conteneur est masqué sur mobile quand l'autre onglet est actif : on recalcule la taille.
   useEffect(() => {
     if (props.visible) setTimeout(() => map.current?.resize(), 50);
   }, [props.visible]);
 
+  const presentCats = CATEGORIES.filter((c) => props.detailPois.some((p) => categoryOf(p.tags).key === c.key));
+
   return (
     <>
       <div ref={container} className="map" />
-      {mapError && (
+      {mapError ? (
         <div className="map-error">
           <strong>Carte indisponible dans ce navigateur</strong>
           <p>
             La carte nécessite WebGL. Ouvrez l'application dans Chrome, Edge ou Firefox (http://localhost:5173).
-            L'assistant reste utilisable.
+            La recherche reste utilisable.
           </p>
+        </div>
+      ) : (
+        <div className="legend">
+          {props.mode === "overview" && (
+            <>
+              <strong>Gares accessibles depuis {props.originName}</strong>
+              {TIME_STEPS.map((s) => (
+                <span key={s.label}>
+                  <i style={{ background: s.color }} />
+                  {s.label === "plus" ? "plus de 2h" : `≤ ${s.label}`}
+                </span>
+              ))}
+              <small>Survolez une gare pour son temps de trajet, cliquez pour voir ce qu'il y a autour.</small>
+            </>
+          )}
+          {props.mode === "results" && (
+            <>
+              <strong>Destinations proposées</strong>
+              <small>Les numéros correspondent à la liste. Cliquez une destination pour voir ses lieux.</small>
+            </>
+          )}
+          {props.mode === "detail" && (
+            <>
+              <strong>Lieux autour de {props.detailStation?.name}</strong>
+              {presentCats.map((c) => (
+                <span key={c.key}>
+                  <i style={{ background: c.color }} />
+                  {c.label}
+                </span>
+              ))}
+              <small>Les numéros correspondent à la liste.</small>
+            </>
+          )}
         </div>
       )}
     </>

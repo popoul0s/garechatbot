@@ -414,8 +414,7 @@ main {
   padding: 14px 14px 10px;
   align-items: flex-start;
 }
-.rank,
-.result-marker {
+.rank {
   flex: none;
   display: grid;
   place-items: center;
@@ -426,13 +425,6 @@ main {
   color: var(--on-accent);
   font-size: 0.85rem;
   font-weight: 700;
-}
-.result-marker {
-  width: 30px;
-  height: 30px;
-  border: 2px solid white;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-  cursor: pointer;
 }
 .card-body {
   flex: 1;
@@ -537,17 +529,63 @@ main {
   margin: 12px 0 0;
   padding: 0;
 }
-.places-list li {
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
+.places-list li + li {
+  border-top: 1px solid var(--border);
 }
-.places-list p {
-  margin: 4px 0 0;
+.place {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 10px 6px;
+  border-radius: var(--radius-sm);
+  align-items: flex-start;
+}
+.place:hover {
+  background: var(--sunken);
+}
+.place.active {
+  background: var(--accent-soft);
+}
+.poi-n {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fafaf9;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.place-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .place-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+}
+.more {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  width: 100%;
+}
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 6px;
 }
 .walk {
   flex: none;
@@ -565,7 +603,7 @@ main {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 10px;
-  max-width: calc(100% - 24px);
+  max-width: min(440px, calc(100% - 24px));
   background: var(--surface);
   color: var(--text);
   padding: 8px 12px;
@@ -584,6 +622,95 @@ main {
   border-radius: 50%;
   margin-right: 4px;
   vertical-align: -1px;
+}
+.legend small {
+  width: 100%;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* Marqueurs de carte (HTML) : toujours sur fond clair, la carte restant claire en mode sombre */
+.origin-marker,
+.station-marker {
+  background: #1f2937;
+  color: #fafaf9;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.station-marker {
+  /* pas de "position" ici : MapLibre positionne lui-même ses marqueurs en absolu */
+  margin-bottom: 8px;
+  background: #0f766e;
+  font-size: 0.85rem;
+}
+.station-marker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom: none;
+  border-top-color: #0f766e;
+}
+.dest-marker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.dest-marker .n {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #0f766e;
+  color: #fafaf9;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border: 2px solid #fafaf9;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.dest-marker .label {
+  background: #fafaf9;
+  color: #1f2937;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  white-space: nowrap;
+}
+.dest-marker:hover .label {
+  background: #0f766e;
+  color: #fafaf9;
+}
+.poi-marker {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #fafaf9;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 2px solid #fafaf9;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform 150ms var(--ease-out);
+}
+.poi-marker:hover,
+.poi-marker.active {
+  transform: scale(1.25);
+  z-index: 1;
+}
+.poi-marker.active {
+  outline: 3px solid #1f2937;
 }
 .map-hint {
   position: absolute;

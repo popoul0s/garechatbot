@@ -9,7 +9,7 @@ import {
   Station,
   StationSummary,
 } from "./api";
-import MapView from "./components/MapView";
+import MapView, { MapMode } from "./components/MapView";
 import Results from "./components/Results";
 import SearchPanel from "./components/SearchPanel";
 import StationDetail from "./components/StationDetail";
@@ -48,7 +48,8 @@ export default function App() {
 
   const [detail, setDetail] = useState<{ station: Station; pois: PoiNearStation[] } | null>(null);
   const [askAround, setAskAround] = useState<StationSummary | null>(null);
-  const [focused, setFocused] = useState<number | null>(null);
+  const [visiblePois, setVisiblePois] = useState<PoiNearStation[]>([]);
+  const [focusedPoi, setFocusedPoi] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -70,7 +71,6 @@ export default function App() {
   const afterResults = (o: SearchOutcome) => {
     setOutcome(o);
     setDetail(null);
-    setFocused(null);
   };
 
   // Recherche par filtres : aucune IA, directement la recherche + classement du backend.
@@ -119,7 +119,7 @@ export default function App() {
 
   // Carte ou liste -> fiche de la gare
   const openStation = useCallback((id: number) => {
-    setFocused(id);
+    setFocusedPoi(null);
     api
       .station(id)
       .then((d) => {
@@ -154,6 +154,7 @@ export default function App() {
   };
 
   const results = outcome?.recommendations ?? [];
+  const mapMode: MapMode = detail ? "detail" : results.length > 0 ? "results" : "overview";
 
   return (
     <div className={`app tab-${mobileTab}`}>
@@ -173,8 +174,14 @@ export default function App() {
               travel={travelFor(detail.station.id)}
               originName={criteria.origin}
               canGoBack={!!outcome}
+              focusedPoiId={focusedPoi}
               onBack={() => setDetail(null)}
               onAsk={askAboutStation}
+              onPoiClick={(id) => {
+                setFocusedPoi(id);
+                if (isMobile()) setMobileTab("map");
+              }}
+              onVisibleChange={setVisiblePois}
             />
           ) : (
             <>
@@ -240,26 +247,18 @@ export default function App() {
 
         <section className="map-wrap">
           <MapView
+            mode={mapMode}
             stations={stationsGeo}
             lines={linesGeo}
+            originName={criteria.origin}
             results={results}
-            focusedStationId={focused}
-            selectedStationId={detail?.station.id ?? null}
-            stationPois={detail?.pois ?? []}
+            detailStation={detail?.station ?? null}
+            detailPois={detail ? visiblePois : []}
+            focusedPoiId={focusedPoi}
             onSelectStation={openStation}
+            onSelectPoi={setFocusedPoi}
             visible={mobileTab === "map" || !isMobile()}
           />
-          <div className="legend">
-            <strong>Temps de train depuis {criteria.origin}</strong>
-            <span><i style={{ background: "#16a34a" }} />30 min</span>
-            <span><i style={{ background: "#84cc16" }} />1h</span>
-            <span><i style={{ background: "#f59e0b" }} />1h30</span>
-            <span><i style={{ background: "#f97316" }} />2h</span>
-            <span><i style={{ background: "#dc2626" }} />plus</span>
-          </div>
-          {!detail && results.length === 0 && (
-            <div className="map-hint">Cliquez sur une gare pour voir ce qu'il y a autour</div>
-          )}
         </section>
       </main>
 

@@ -162,3 +162,17 @@ export const TAG_LABELS: Record<string, string> = {
   loisirs: "Loisirs",
   panorama: "Panorama",
 };
+
+/** Catégories affichées sur la carte : peu nombreuses pour rester lisibles. */
+export const CATEGORIES = [
+  { key: "culture", label: "Patrimoine et culture", color: "#7c3aed", tags: ["musee", "patrimoine", "culture"] },
+  { key: "rando", label: "Randonnée et montagne", color: "#b45309", tags: ["randonnee", "montagne", "panorama"] },
+  { key: "eau", label: "Lacs et rivières", color: "#0284c7", tags: ["eau"] },
+  { key: "loisirs", label: "Loisirs et famille", color: "#db2777", tags: ["loisirs", "famille"] },
+  { key: "nature", label: "Nature et parcs", color: "#16a34a", tags: ["nature"] },
+] as const;
+export type Category = (typeof CATEGORIES)[number];
+
+export function categoryOf(tags: string[]): Category {
+  return CATEGORIES.find((c) => c.tags.some((t) => tags.includes(t))) ?? CATEGORIES[CATEGORIES.length - 1];
+}
