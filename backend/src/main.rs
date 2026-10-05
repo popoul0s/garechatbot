@@ -9,6 +9,9 @@ mod state;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::Context;
 
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::Mutex;
@@ -29,7 +32,16 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cfg = Config::from_env()?;
-    let db = PgPoolOptions::new().max_connections(10).connect(&cfg.database_url).await?;
+    tracing::info!("connexion à la base de données…");
+    let db = PgPoolOptions::new()
+        .max_connections(10)
+        .acquire_timeout(Duration::from_secs(5))
+        .connect(&cfg.database_url)
+        .await
+        .context(
+            "impossible de joindre PostgreSQL : Docker Desktop est-il lancé et `docker compose up -d db` exécuté ? \
+             (vérifier aussi DATABASE_URL dans .env)",
+        )?;
     let llm = cfg.llm.clone().map(llm::LlmClient::new).transpose()?;
     match &llm {
         Some(l) => tracing::info!(model = l.model(), "LLM configuré"),
