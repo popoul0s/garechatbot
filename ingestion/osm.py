@@ -23,7 +23,11 @@ HEADERS = {
     "Accept": "application/json",
 }
 RADIUS_M = 3000
-BATCH = 8
+BATCH = 5
+# Une boîte englobante par gare (±3 km) : bien plus rapide pour Overpass qu'un filtre "around".
+# Les POI hors du rayon réel sont écartés ensuite par link.py (ST_DWithin 3000 m).
+DLAT = RADIUS_M / 111_000
+DLON = RADIUS_M / 78_000  # ~1° de longitude à 45° de latitude
 
 FILTERS = [
     '["tourism"~"^(attraction|museum|viewpoint|zoo|theme_park|picnic_site|gallery)$"]',
@@ -31,8 +35,9 @@ FILTERS = [
     '["leisure"~"^(park|nature_reserve|playground|water_park|swimming_area|garden)$"]',
     '["natural"~"^(peak|waterfall|cave_entrance|beach|gorge)$"]',
     '["water"="lake"]["name"]',
-    '["route"="hiking"]["name"]',
 ]
+# Les relations route=hiking ne sont pas interrogées : calculer leur centre est très coûteux pour
+# Overpass. Les itinéraires de randonnée viennent de DATAtourisme ; OSM apporte sommets, cascades, lacs...
 
 
 def map_tags(t: dict[str, str]) -> list[str]:
@@ -101,14 +106,16 @@ def description(t: dict[str, str]) -> str | None:
 
 def query(stations: list[tuple[float, float]]) -> list[dict]:
     body = "".join(
-        f"nwr(around:{RADIUS_M},{lat},{lon}){f};" for lon, lat in stations for f in FILTERS
+        f"nwr{f}({lat - DLAT:.5f},{lon - DLON:.5f},{lat + DLAT:.5f},{lon + DLON:.5f});"
+        for lon, lat in stations
+        for f in FILTERS
     )
-    q = f"[out:json][timeout:180];({body});out center tags;"
+    q = f"[out:json][timeout:90];({body});out center tags;"
     errors = []
-    for attempt in range(6):
+    for attempt in range(len(OVERPASS_URLS) * 2):
         url = OVERPASS_URLS[attempt % len(OVERPASS_URLS)]
         try:
-            r = requests.post(url, data={"data": q}, headers=HEADERS, timeout=240)
+            r = requests.post(url, data={"data": q}, headers=HEADERS, timeout=120)
         except requests.RequestException as e:
             errors.append(f"{url}: {e}")
             continue
@@ -132,7 +139,9 @@ def run(limit_stations: int | None = None) -> None:
         )
         stations = cur.fetchall()[:limit_stations]
         total = 0
+        started = time.monotonic()
         for i in range(0, len(stations), BATCH):
+            print(f"  gares {i + 1}-{min(i + BATCH, len(stations))}/{len(stations)} : requête Overpass…", flush=True)
             elements = query(stations[i : i + BATCH])
             for e in elements:
                 tags = e.get("tags", {})
@@ -153,6 +162,6 @@ def run(limit_stations: int | None = None) -> None:
                 )
                 total += 1
             conn.commit()
-            print(f"  gares {i + 1}-{min(i + BATCH, len(stations))}/{len(stations)} : {len(elements)} éléments")
+            print(f"    {len(elements)} éléments reçus ({time.monotonic() - started:.0f} s écoulées)", flush=True)
             time.sleep(2)  # politesse envers l'API publique
         print(f"  {total} POI OSM enregistrés")
