@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, LngLatBoundsLike, Map as MlMap } from "maplibre-gl";
 import { formatMinutes, PoiNearStation, Recommendation, TAG_LABELS } from "../api";
@@ -77,13 +77,23 @@ export default function MapView(props: Props) {
   onSelect.current = props.onSelectStation;
 
   // Création de la carte et des couches
+  const [mapError, setMapError] = useState<string | null>(null);
+
   useEffect(() => {
-    const m = new maplibregl.Map({
-      container: container.current!,
-      style: STYLE,
-      center: [5.72, 45.19],
-      zoom: 8,
-    });
+    let m: MlMap;
+    try {
+      m = new maplibregl.Map({
+        container: container.current!,
+        style: STYLE,
+        center: [5.72, 45.19],
+        zoom: 8,
+      });
+    } catch (e) {
+      // Navigateur sans WebGL (ex. aperçu intégré de VS Code) : on garde le reste de l'application utilisable.
+      console.error(e);
+      setMapError((e as Error).message);
+      return;
+    }
     map.current = m;
     m.addControl(new maplibregl.NavigationControl(), "top-right");
 
@@ -245,5 +255,18 @@ export default function MapView(props: Props) {
     if (props.visible) setTimeout(() => map.current?.resize(), 50);
   }, [props.visible]);
 
-  return <div ref={container} className="map" />;
+  return (
+    <>
+      <div ref={container} className="map" />
+      {mapError && (
+        <div className="map-error">
+          <strong>Carte indisponible dans ce navigateur</strong>
+          <p>
+            La carte nécessite WebGL. Ouvrez l'application dans Chrome, Edge ou Firefox (http://localhost:5173).
+            L'assistant reste utilisable.
+          </p>
+        </div>
+      )}
+    </>
+  );
 }

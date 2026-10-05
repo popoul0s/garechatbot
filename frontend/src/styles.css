@@ -66,6 +66,21 @@ main {
   position: absolute;
   inset: 0;
 }
+.map-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--muted);
+}
+.map-error strong {
+  color: var(--text);
+}
 .legend {
   position: absolute;
   left: 10px;
