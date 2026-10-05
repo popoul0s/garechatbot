@@ -11,7 +11,17 @@ import requests
 
 from common import connect, require_stations
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Serveurs Overpass publics, essayés dans l'ordre en cas d'erreur
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+]
+# Les serveurs publics refusent (406/429) les requêtes anonymes : on s'identifie.
+HEADERS = {
+    "User-Agent": "GareChatBot/0.1 (projet etudiant tourisme ferroviaire AURA)",
+    "Accept": "application/json",
+}
 RADIUS_M = 3000
 BATCH = 8
 
@@ -94,21 +104,32 @@ def query(stations: list[tuple[float, float]]) -> list[dict]:
         f"nwr(around:{RADIUS_M},{lat},{lon}){f};" for lon, lat in stations for f in FILTERS
     )
     q = f"[out:json][timeout:180];({body});out center tags;"
-    for attempt in range(4):
-        r = requests.post(OVERPASS_URL, data={"data": q}, timeout=240)
-        if r.status_code in (429, 504):
-            time.sleep(10 * (attempt + 1))
+    errors = []
+    for attempt in range(6):
+        url = OVERPASS_URLS[attempt % len(OVERPASS_URLS)]
+        try:
+            r = requests.post(url, data={"data": q}, headers=HEADERS, timeout=240)
+        except requests.RequestException as e:
+            errors.append(f"{url}: {e}")
             continue
-        r.raise_for_status()
-        return r.json().get("elements", [])
-    raise RuntimeError("Overpass indisponible")
+        if r.ok:
+            return r.json().get("elements", [])
+        errors.append(f"{url}: HTTP {r.status_code}")
+        time.sleep(5 * (attempt + 1) if r.status_code in (429, 504) else 1)
+    raise RuntimeError("Overpass indisponible :\n  " + "\n  ".join(errors))
 
 
 def run(limit_stations: int | None = None) -> None:
     print("OSM : récupération des POI autour des gares (Overpass)")
     with connect() as conn, conn.cursor() as cur:
         require_stations(cur)
-        cur.execute("SELECT lon, lat FROM stations ORDER BY id")
+        # les gares les plus proches des origines d'abord : --osm-limit garde les plus utiles
+        cur.execute(
+            """SELECT s.lon, s.lat FROM stations s
+               LEFT JOIN (SELECT station_id, min(minutes) AS m FROM travel_times GROUP BY station_id) t
+                 ON t.station_id = s.id
+               ORDER BY t.m NULLS LAST, s.id"""
+        )
         stations = cur.fetchall()[:limit_stations]
         total = 0
         for i in range(0, len(stations), BATCH):
