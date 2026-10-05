@@ -113,7 +113,11 @@ export default function ChatPanel(props: Props) {
   const [text, setText] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
 
-  useEffect(() => bottom.current?.scrollIntoView({ behavior: "smooth" }), [props.messages, props.loading]);
+  useEffect(() => {
+    // pas de "return" implicite : scrollIntoView renvoie une Promise dans les navigateurs récents,
+    // que React prendrait pour une fonction de nettoyage ("destroy is not a function").
+    bottom.current?.scrollIntoView({ behavior: "smooth" });
+  }, [props.messages, props.loading]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

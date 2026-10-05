@@ -22,7 +22,9 @@ export default function ExplorerPanel({ selected, onSelectStation, onAsk }: Prop
     return () => clearTimeout(t);
   }, [query]);
 
-  useEffect(() => setTag(null), [selected?.station.id]);
+  useEffect(() => {
+    setTag(null);
+  }, [selected?.station.id]);
 
   const tags = selected ? [...new Set(selected.pois.flatMap((p) => p.tags))].sort() : [];
   const pois = selected ? selected.pois.filter((p) => !tag || p.tags.includes(tag)) : [];
