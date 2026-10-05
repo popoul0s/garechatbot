@@ -112,37 +112,66 @@ def query(stations: list[tuple[float, float]]) -> list[dict]:
     )
     q = f"[out:json][timeout:90];({body});out center tags;"
     errors = []
-    for attempt in range(len(OVERPASS_URLS) * 2):
+    for attempt in range(len(OVERPASS_URLS) * 3):
         url = OVERPASS_URLS[attempt % len(OVERPASS_URLS)]
         try:
             r = requests.post(url, data={"data": q}, headers=HEADERS, timeout=120)
         except requests.RequestException as e:
-            errors.append(f"{url}: {e}")
+            errors.append(f"{url}: {type(e).__name__}")
             continue
         if r.ok:
             return r.json().get("elements", [])
         errors.append(f"{url}: HTTP {r.status_code}")
-        time.sleep(5 * (attempt + 1) if r.status_code in (429, 504) else 1)
-    raise RuntimeError("Overpass indisponible :\n  " + "\n  ".join(errors))
+        if r.status_code == 429:
+            # quota dépassé : on laisse le serveur souffler avant de réessayer
+            print("    serveur saturé (429), pause de 60 s…", flush=True)
+            time.sleep(60)
+        else:
+            time.sleep(10)
+    raise RuntimeError("Overpass indisponible :\n  " + "\n  ".join(errors[-3:]))
 
 
-def run(limit_stations: int | None = None) -> None:
+def run(limit_stations: int | None = None, restart: bool = False) -> None:
     print("OSM : récupération des POI autour des gares (Overpass)")
     with connect() as conn, conn.cursor() as cur:
         require_stations(cur)
+        # Suivi des gares déjà traitées : une relance reprend là où l'import s'est arrêté.
+        cur.execute("SELECT to_regclass('osm_done') IS NOT NULL")
+        tracked = cur.fetchone()[0]
+        cur.execute("CREATE TABLE IF NOT EXISTS osm_done (station_id BIGINT PRIMARY KEY REFERENCES stations(id) ON DELETE CASCADE)")
+        if not tracked:
+            # import fait avant l'existence du suivi : les gares ayant déjà des POI OSM proches sont considérées faites
+            cur.execute(
+                f"""INSERT INTO osm_done SELECT DISTINCT s.id FROM stations s JOIN pois p
+                    ON p.source = 'osm' AND ST_DWithin(s.geom, p.geom, {RADIUS_M})"""
+            )
+        if restart:
+            cur.execute("TRUNCATE osm_done")
         # les gares les plus proches des origines d'abord : --osm-limit garde les plus utiles
         cur.execute(
-            """SELECT s.lon, s.lat FROM stations s
+            """SELECT s.id, s.lon, s.lat, d.station_id IS NOT NULL FROM stations s
                LEFT JOIN (SELECT station_id, min(minutes) AS m FROM travel_times GROUP BY station_id) t
                  ON t.station_id = s.id
+               LEFT JOIN osm_done d ON d.station_id = s.id
                ORDER BY t.m NULLS LAST, s.id"""
         )
-        stations = cur.fetchall()[:limit_stations]
+        selected = cur.fetchall()[:limit_stations]
+        stations = [(sid, lon, lat) for sid, lon, lat, done in selected if not done]
+        if len(stations) < len(selected):
+            print(f"  {len(selected) - len(stations)} gares déjà traitées (reprise) ; --osm-restart pour tout refaire")
         total = 0
+        failed: list[int] = []
         started = time.monotonic()
         for i in range(0, len(stations), BATCH):
-            print(f"  gares {i + 1}-{min(i + BATCH, len(stations))}/{len(stations)} : requête Overpass…", flush=True)
-            elements = query(stations[i : i + BATCH])
+            batch = stations[i : i + BATCH]
+            print(f"  gares {i + 1}-{i + len(batch)}/{len(stations)} : requête Overpass…", flush=True)
+            try:
+                elements = query([(lon, lat) for _, lon, lat in batch])
+            except RuntimeError as e:
+                # on n'interrompt pas tout l'import : ces gares seront retentées à la prochaine relance
+                print(f"    lot ignoré, {e}", flush=True)
+                failed += [sid for sid, _, _ in batch]
+                continue
             for e in elements:
                 tags = e.get("tags", {})
                 name = default_name(tags)
@@ -161,7 +190,12 @@ def run(limit_stations: int | None = None) -> None:
                      tags.get("website"), lon, lat, lon, lat),
                 )
                 total += 1
+            cur.executemany(
+                "INSERT INTO osm_done (station_id) VALUES (%s) ON CONFLICT DO NOTHING", [(sid,) for sid, _, _ in batch]
+            )
             conn.commit()
             print(f"    {len(elements)} éléments reçus ({time.monotonic() - started:.0f} s écoulées)", flush=True)
             time.sleep(2)  # politesse envers l'API publique
         print(f"  {total} POI OSM enregistrés")
+        if failed:
+            print(f"  ! {len(failed)} gares non traitées (serveurs saturés) : relancez la même commande plus tard")

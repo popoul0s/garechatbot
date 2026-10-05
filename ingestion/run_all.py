@@ -43,7 +43,8 @@ def main() -> None:
     p.add_argument("--gtfs", default=DEFAULT_GTFS, help="URL ou chemin du GTFS ferroviaire")
     p.add_argument("--origins", default=DEFAULT_ORIGINS, help="gares d'origine, séparées par des virgules")
     p.add_argument("--datatourisme", help="URL, archive .zip ou dossier du flux DATAtourisme")
-    p.add_argument("--osm-limit", type=int, help="ne traiter que les N premières gares (tests)")
+    p.add_argument("--osm-limit", type=int, help="ne traiter que les N gares les plus proches des origines")
+    p.add_argument("--osm-restart", action="store_true", help="osm : retraiter aussi les gares déjà importées")
     p.add_argument("--inspect", action="store_true", help="sncf : afficher les champs des jeux SNCF")
     a = p.parse_args()
 
@@ -58,7 +59,7 @@ def main() -> None:
             except Exception as e:  # noqa: BLE001 - l'enrichissement SNCF ne doit pas bloquer le pipeline
                 print(f"  ! enrichissement SNCF en échec : {e}")
     if a.step in ("all", "osm"):
-        osm.run(a.osm_limit)
+        osm.run(a.osm_limit, a.osm_restart)
     if a.step in ("all", "datatourisme"):
         if a.datatourisme:
             datatourisme.run(a.datatourisme)
