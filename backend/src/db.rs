@@ -83,6 +83,17 @@ pub async fn reachable_from(db: &PgPool, origin_id: i64, max_minutes: i32) -> sq
     .await
 }
 
+/// Gares pour lesquelles des temps de trajet ont été calculés (gares de départ possibles).
+pub async fn origins(db: &PgPool) -> sqlx::Result<Vec<Station>> {
+    sqlx::query_as::<_, Station>(&format!(
+        "SELECT {STATION_COLS} FROM stations s
+         WHERE EXISTS (SELECT 1 FROM travel_times t WHERE t.origin_id = s.id)
+         ORDER BY s.name"
+    ))
+    .fetch_all(db)
+    .await
+}
+
 pub async fn has_travel_times(db: &PgPool, origin_id: i64) -> sqlx::Result<bool> {
     sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM travel_times WHERE origin_id = $1)")
         .bind(origin_id)

@@ -1,135 +1,274 @@
-import { useCallback, useEffect, useState } from "react";
-import { api, ChatResponse, Criteria, PoiNearStation, Recommendation, Station } from "./api";
-import ChatPanel, { Message } from "./components/ChatPanel";
-import ExplorerPanel from "./components/ExplorerPanel";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Answer,
+  api,
+  Criteria,
+  EMPTY_CRITERIA,
+  PoiNearStation,
+  SearchOutcome,
+  Station,
+  StationSummary,
+} from "./api";
 import MapView from "./components/MapView";
+import Results from "./components/Results";
+import SearchPanel from "./components/SearchPanel";
+import StationDetail from "./components/StationDetail";
 
-type Tab = "assistant" | "explorer" | "map";
+type MobileTab = "search" | "map";
+const DEFAULT_ORIGIN = "Grenoble";
+
+const STEPS = [
+  ["Choisissez votre gare de départ", "Les temps de trajet sont calculés depuis les horaires SNCF."],
+  ["Décrivez votre envie, ou cochez des filtres", "Nature, culture, avec des enfants, temps de train, marche…"],
+  ["Comparez les destinations", "Sur la liste et sur la carte. Cliquez une destination pour voir ce qu'il y a autour."],
+];
+
+const SUGGESTIONS = [
+  "Une balade nature facile à moins d'1h30, peu de marche",
+  "Une journée à la montagne avec des enfants",
+  "Du patrimoine et une randonnée",
+];
+
+const isMobile = () => window.matchMedia("(max-width: 800px)").matches;
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("assistant");
-  const [stations, setStations] = useState<GeoJSON.FeatureCollection | null>(null);
-  const [lines, setLines] = useState<GeoJSON.FeatureCollection | null>(null);
-  const [origin, setOrigin] = useState("Grenoble");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("search");
+  const [origins, setOrigins] = useState<Station[]>([]);
+  const [stationsGeo, setStationsGeo] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [linesGeo, setLinesGeo] = useState<GeoJSON.FeatureCollection | null>(null);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [criteria, setCriteria] = useState<Criteria>({ ...EMPTY_CRITERIA, origin: DEFAULT_ORIGIN });
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [criteria, setCriteria] = useState<Criteria | null>(null);
+  const [query, setQuery] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
+  const [answer, setAnswer] = useState<Answer | null>(null);
+  const [engine, setEngine] = useState<{ label: string; ms: number } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<Recommendation[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const [detail, setDetail] = useState<{ station: Station; pois: PoiNearStation[] } | null>(null);
+  const [askAround, setAskAround] = useState<StationSummary | null>(null);
   const [focused, setFocused] = useState<number | null>(null);
-
-  const [selected, setSelected] = useState<{ station: Station; pois: PoiNearStation[] } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    api.mapLines().then(setLines).catch(console.error);
-  }, []);
-  useEffect(() => {
-    api.mapStations(origin).then(setStations).catch(console.error);
-  }, [origin]);
-
-  // Carte -> contexte : sélectionner une gare charge ses POI et en fait le contexte de l'assistant.
-  const selectStation = useCallback((id: number) => {
+    api.mapLines().then(setLinesGeo).catch(console.error);
     api
-      .station(id)
-      .then((d) => {
-        setSelected(d);
-        setFocused(id);
+      .origins()
+      .then((list) => {
+        setOrigins(list);
+        if (list.length > 0 && !list.some((o) => o.name === DEFAULT_ORIGIN)) {
+          setCriteria((c) => ({ ...c, origin: list[0].name }));
+        }
       })
       .catch(console.error);
   }, []);
+  useEffect(() => {
+    if (criteria.origin) api.mapStations(criteria.origin).then(setStationsGeo).catch(console.error);
+  }, [criteria.origin]);
 
-  const send = async (text: string) => {
-    setMessages((m) => [...m, { role: "user", text }]);
+  const afterResults = (o: SearchOutcome) => {
+    setOutcome(o);
+    setDetail(null);
+    setFocused(null);
+  };
+
+  // Recherche par filtres : aucune IA, directement la recherche + classement du backend.
+  const runFilters = async (next: Criteria) => {
+    setCriteria(next);
+    setQuery(null);
     setLoading(true);
-    if (window.matchMedia("(max-width: 800px)").matches) setTab("assistant");
+    setError(null);
+    const t = performance.now();
     try {
-      const d: ChatResponse = await api.chat(text, sessionId, selected?.station.id ?? null);
-      setSessionId(d.session_id);
-      setCriteria(d.criteria);
-      setResults(d.recommendations); // IA -> carte
-      if (d.origin) setOrigin(d.origin.name);
-      setMessages((m) => [...m, { role: "assistant", data: d }]);
+      const o = await api.search({ ...next, around_station_id: askAround?.id ?? null });
+      afterResults(o);
+      setAnswer(null);
+      setEngine({ label: "Recherche par filtres (sans IA)", ms: Math.round(performance.now() - t) });
     } catch (e) {
-      setMessages((m) => [...m, { role: "error", text: `Erreur : ${(e as Error).message}` }]);
+      setError((e as Error).message);
     } finally {
       setLoading(false);
     }
   };
 
+  // Recherche en langage naturel : l'IA comprend la demande, le backend cherche et classe.
+  const ask = async (text: string) => {
+    setQuery(text);
+    setLoading(true);
+    setError(null);
+    try {
+      const d = await api.chat(text, sessionId, askAround?.id ?? null, criteria);
+      setSessionId(d.session_id);
+      setCriteria({ ...d.criteria, origin: d.criteria.origin ?? criteria.origin, around_station_id: null });
+      afterResults(d);
+      // Sans IA, le texte généré répète les infos déjà affichées sur chaque carte : on ne le montre pas.
+      setAnswer(d.engine.generation === "llm" ? d.answer : null);
+      setEngine({
+        label: `Compréhension : ${d.engine.extraction === "llm" ? "IA" : "règles"}, rédaction : ${
+          d.engine.generation === "llm" ? "IA" : "modèle de texte"
+        }${d.engine.model ? ` (${d.engine.model})` : ""}`,
+        ms: d.timings.total_ms,
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Carte ou liste -> fiche de la gare
+  const openStation = useCallback((id: number) => {
+    setFocused(id);
+    api
+      .station(id)
+      .then((d) => {
+        setDetail(d);
+        if (isMobile()) setMobileTab("search");
+      })
+      .catch(console.error);
+  }, []);
+
+  const askAboutStation = () => {
+    if (!detail) return;
+    setAskAround({ ...detail.station });
+    setDetail(null);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
   const reset = () => {
     if (sessionId) api.resetChat(sessionId).catch(console.error);
     setSessionId(null);
-    setCriteria(null);
-    setMessages([]);
-    setResults([]);
+    setCriteria({ ...EMPTY_CRITERIA, origin: criteria.origin });
+    setOutcome(null);
+    setAnswer(null);
+    setQuery(null);
+    setDetail(null);
+    setAskAround(null);
+    setError(null);
   };
 
-  const focus = (id: number) => {
-    setFocused(id);
-    if (window.matchMedia("(max-width: 800px)").matches) setTab("map");
+  const travelFor = (id: number) => {
+    const f = stationsGeo?.features.find((x) => x.properties?.id === id);
+    return f ? { minutes: f.properties?.minutes ?? null, nb_changes: f.properties?.nb_changes ?? null } : null;
   };
+
+  const results = outcome?.recommendations ?? [];
 
   return (
-    <div className={`app tab-${tab}`}>
+    <div className={`app tab-${mobileTab}`}>
       <header>
-        <h1>🚆 GareChatBot</h1>
-        <span className="muted">Découvrir Auvergne-Rhône-Alpes en train</span>
+        <button className="brand" onClick={reset} title="Nouvelle recherche">
+          <span aria-hidden>🚆</span> GareChatBot
+        </button>
+        <span className="tagline">Sorties en train en Auvergne-Rhône-Alpes</span>
       </header>
+
       <main>
-        <section className="panel">
-          <nav className="tabs">
-            <button className={tab === "assistant" ? "active" : ""} onClick={() => setTab("assistant")}>
-              Assistant
-            </button>
-            <button className={tab === "explorer" ? "active" : ""} onClick={() => setTab("explorer")}>
-              Explorer
-            </button>
-          </nav>
-          <div className="panel-body">
-            {tab !== "explorer" ? (
-              <ChatPanel
-                messages={messages}
-                loading={loading}
+        <aside className="panel">
+          {detail ? (
+            <StationDetail
+              station={detail.station}
+              pois={detail.pois}
+              travel={travelFor(detail.station.id)}
+              originName={criteria.origin}
+              canGoBack={!!outcome}
+              onBack={() => setDetail(null)}
+              onAsk={askAboutStation}
+            />
+          ) : (
+            <>
+              <SearchPanel
+                origins={origins}
                 criteria={criteria}
-                selectedStation={selected?.station ?? null}
-                onSend={send}
-                onReset={reset}
-                onClearSelection={() => setSelected(null)}
-                onFocus={focus}
+                loading={loading}
+                askAround={askAround}
+                onAsk={ask}
+                onFilters={runFilters}
+                onClearAskAround={() => setAskAround(null)}
+                inputRef={inputRef}
               />
-            ) : (
-              <ExplorerPanel selected={selected} onSelectStation={selectStation} onAsk={() => setTab("assistant")} />
-            )}
-          </div>
-        </section>
+
+              {error && (
+                <p className="error" role="alert">
+                  Le serveur ne répond pas correctement. Vérifiez que l'API est lancée. ({error.slice(0, 120)})
+                </p>
+              )}
+              {loading && (
+                <div className="loading" aria-live="polite">
+                  <span className="spinner" aria-hidden /> Recherche des destinations…
+                </div>
+              )}
+
+              {!loading && outcome && (
+                <Results
+                  query={query}
+                  criteria={criteria}
+                  outcome={outcome}
+                  answer={answer}
+                  engine={engine}
+                  onOpen={openStation}
+                />
+              )}
+
+              {!loading && !outcome && (
+                <section className="welcome">
+                  <ol className="steps">
+                    {STEPS.map(([title, text], i) => (
+                      <li key={title}>
+                        <span className="step-n">{i + 1}</span>
+                        <div>
+                          <strong>{title}</strong>
+                          <p>{text}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="muted">Pour essayer :</p>
+                  <div className="suggestions">
+                    {SUGGESTIONS.map((s) => (
+                      <button key={s} className="suggestion" onClick={() => ask(s)}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+        </aside>
+
         <section className="map-wrap">
           <MapView
-            stations={stations}
-            lines={lines}
+            stations={stationsGeo}
+            lines={linesGeo}
             results={results}
             focusedStationId={focused}
-            selectedStationId={selected?.station.id ?? null}
-            stationPois={selected?.pois ?? []}
-            onSelectStation={selectStation}
-            visible={tab === "map" || !window.matchMedia("(max-width: 800px)").matches}
+            selectedStationId={detail?.station.id ?? null}
+            stationPois={detail?.pois ?? []}
+            onSelectStation={openStation}
+            visible={mobileTab === "map" || !isMobile()}
           />
           <div className="legend">
-            Trajet depuis {origin} : <i style={{ background: "#16a34a" }} />≤30 min <i style={{ background: "#84cc16" }} />
-            ≤1h <i style={{ background: "#f59e0b" }} />≤1h30 <i style={{ background: "#f97316" }} />≤2h{" "}
-            <i style={{ background: "#dc2626" }} />+2h
+            <strong>Temps de train depuis {criteria.origin}</strong>
+            <span><i style={{ background: "#16a34a" }} />30 min</span>
+            <span><i style={{ background: "#84cc16" }} />1h</span>
+            <span><i style={{ background: "#f59e0b" }} />1h30</span>
+            <span><i style={{ background: "#f97316" }} />2h</span>
+            <span><i style={{ background: "#dc2626" }} />plus</span>
           </div>
+          {!detail && results.length === 0 && (
+            <div className="map-hint">Cliquez sur une gare pour voir ce qu'il y a autour</div>
+          )}
         </section>
       </main>
+
       <nav className="mobile-tabs">
-        <button className={tab === "assistant" ? "active" : ""} onClick={() => setTab("assistant")}>
-          💬 Assistant
+        <button className={mobileTab === "search" ? "active" : ""} onClick={() => setMobileTab("search")}>
+          Recherche
         </button>
-        <button className={tab === "explorer" ? "active" : ""} onClick={() => setTab("explorer")}>
-          🔎 Explorer
-        </button>
-        <button className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}>
-          🗺️ Carte{results.length ? ` (${results.length})` : ""}
+        <button className={mobileTab === "map" ? "active" : ""} onClick={() => setMobileTab("map")}>
+          Carte{results.length ? ` (${results.length})` : ""}
         </button>
       </nav>
     </div>

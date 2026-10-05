@@ -113,7 +113,9 @@ export default function MapView(props: Props) {
         type: "circle",
         source: "stations",
         paint: {
-          "circle-radius": ["case", ["get", "is_origin"], 9, ["get", "selected"], 9, 5],
+          // gares inaccessibles depuis l'origine : petites et discrètes
+          "circle-radius": ["case", ["get", "is_origin"], 9, ["get", "selected"], 9, ["==", ["get", "minutes"], null], 3, 5],
+          "circle-opacity": ["case", ["==", ["get", "minutes"], null], 0.5, 1],
           "circle-color": [
             "case",
             ["==", ["get", "minutes"], null], "#94a3b8",
@@ -124,7 +126,7 @@ export default function MapView(props: Props) {
             "#dc2626",
           ],
           "circle-stroke-width": ["case", ["get", "selected"], 4, ["get", "is_origin"], 3, 1],
-          "circle-stroke-color": ["case", ["get", "selected"], "#1d4ed8", "#ffffff"],
+          "circle-stroke-color": ["case", ["get", "selected"], "#0f766e", "#fafaf9"],
         },
       });
       m.addLayer({
@@ -135,7 +137,7 @@ export default function MapView(props: Props) {
           "circle-radius": ["case", ["get", "result"], 7, 5],
           "circle-color": ["get", "color"],
           "circle-stroke-width": 1.5,
-          "circle-stroke-color": "#ffffff",
+          "circle-stroke-color": "#fafaf9",
         },
       });
 

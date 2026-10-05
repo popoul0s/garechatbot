@@ -12,6 +12,7 @@ pub fn router(state: AppState) -> Router {
     let llm = state.llm.as_ref().map(|l| l.model().to_string());
     Router::new()
         .route("/api/health", get(move || async move { Json(json!({ "ok": true, "llm": llm })) }))
+        .route("/api/origins", get(stations::origins))
         .route("/api/stations", get(stations::search))
         .route("/api/stations/reachable", get(stations::reachable))
         .route("/api/stations/{id}", get(stations::detail))

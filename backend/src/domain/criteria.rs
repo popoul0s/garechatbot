@@ -193,14 +193,28 @@ pub fn extract_with_rules(message: &str) -> Criteria {
         durations.push((m.start(), m.end(), minutes));
     }
     for (start, end, minutes) in durations {
+        // Durée de marche si : la même proposition commence par "marcher..." / "à pied..."
+        // ("je ne veux pas marcher plus de 15 min"), ou la durée est immédiatement suivie de
+        // "de marche" / "à pied" ("20 minutes de marche"). Une virgule sépare deux propositions :
+        // dans "à moins d'1h30, peu de marche", 1h30 reste une durée de train.
         let before = &text[text.floor_char_boundary(start.saturating_sub(30))..start];
-        let after = &text[end..text.ceil_char_boundary((end + 20).min(text.len()))];
-        let is_walk = ["march", "pied", "a pied"].iter().any(|w| before.contains(w) || after.contains(w));
+        let clause = before.rsplit([',', '.', ';']).next().unwrap_or(before);
+        let after = text[end..].trim_start();
+        let is_walk = ["march", "pied"].iter().any(|w| clause.contains(w))
+            || ["de march", "a pied", "de pied"].iter().any(|w| after.starts_with(w));
         if is_walk {
             c.max_walk_minutes.get_or_insert(minutes);
         } else {
             c.max_travel_minutes.get_or_insert(minutes);
         }
+    }
+
+    if c.max_walk_minutes.is_none()
+        && ["peu de marche", "pas trop marcher", "pas beaucoup marcher", "sans marcher"]
+            .iter()
+            .any(|w| text.contains(w))
+    {
+        c.max_walk_minutes = Some(15);
     }
 
     for (theme, words) in THEME_SYNONYMS {
@@ -264,6 +278,17 @@ mod tests {
         let c = extract_with_rules("Je ne veux pas marcher plus de 15 minutes après la gare.");
         assert_eq!(c.max_walk_minutes, Some(15));
         assert_eq!(c.max_travel_minutes, None);
+    }
+
+    #[test]
+    fn la_marche_ne_deborde_pas_sur_la_duree_de_train() {
+        let c = extract_with_rules("Une balade nature facile à moins d'1h30, peu de marche");
+        assert_eq!(c.max_travel_minutes, Some(90));
+        assert_eq!(c.max_walk_minutes, Some(15));
+
+        let c = extract_with_rules("Moins de 20 min de marche, à moins de 1h de Grenoble");
+        assert_eq!(c.max_walk_minutes, Some(20));
+        assert_eq!(c.max_travel_minutes, Some(60));
     }
 
     #[test]

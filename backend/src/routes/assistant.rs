@@ -24,6 +24,9 @@ pub struct ChatRequest {
     pub message: String,
     /// Gare sélectionnée sur la carte (contexte de la question). `null` = aucune.
     pub selected_station_id: Option<i64>,
+    /// Critères actuellement affichés par l'interface (filtres éventuellement modifiés à la main).
+    /// S'ils sont fournis, ils servent de contexte à la place de ceux mémorisés en session.
+    pub context: Option<Criteria>,
 }
 
 #[derive(Serialize, Default)]
@@ -70,13 +73,16 @@ pub async fn chat(State(st): State<AppState>, Json(req): Json<ChatRequest>) -> A
     }
 
     let session_id = req.session_id.unwrap_or_else(Uuid::new_v4);
-    let previous = st
-        .sessions
-        .lock()
-        .await
-        .get(&session_id)
-        .map(|s| s.criteria.clone())
-        .unwrap_or_default();
+    let previous = match req.context {
+        Some(c) => c.sanitized(),
+        None => st
+            .sessions
+            .lock()
+            .await
+            .get(&session_id)
+            .map(|s| s.criteria.clone())
+            .unwrap_or_default(),
+    };
 
     let mut engine = Engine { model: st.llm.as_ref().map(|l| l.model().to_string()), ..Default::default() };
     let mut timings = Timings::default();

@@ -62,10 +62,25 @@ export interface Criteria {
   around_station_id: number | null;
 }
 
+export interface SearchOutcome {
+  origin: StationSummary | null;
+  around_station: StationSummary | null;
+  applied_max_travel_minutes: number;
+  applied_max_walk_minutes: number;
+  relaxed: boolean;
+  recommendations: Recommendation[];
+  notes: string[];
+}
+
+export interface Answer {
+  intro: string;
+  items: { station_id: number; explanation: string }[];
+}
+
 export interface ChatResponse {
   session_id: string;
   criteria: Criteria;
-  answer: { intro: string; items: { station_id: number; explanation: string }[] };
+  answer: Answer;
   origin: StationSummary | null;
   around_station: StationSummary | null;
   applied_max_travel_minutes: number;
@@ -99,17 +114,20 @@ async function post<T>(url: string, body: unknown): Promise<T> {
 }
 
 export const api = {
+  origins: () => get<Station[]>("/api/origins"),
+  search: (criteria: Criteria) => post<SearchOutcome>("/api/search", criteria),
   searchStations: (q: string) => get<Station[]>(`/api/stations?q=${encodeURIComponent(q)}`),
   station: (id: number, maxWalk = 30) =>
     get<{ station: Station; pois: PoiNearStation[] }>(`/api/stations/${id}?max_walk=${maxWalk}`),
   mapStations: (origin: string) =>
     get<GeoJSON.FeatureCollection>(`/api/map/stations?origin=${encodeURIComponent(origin)}`),
   mapLines: () => get<GeoJSON.FeatureCollection>("/api/map/lines"),
-  chat: (message: string, sessionId: string | null, selectedStationId: number | null) =>
+  chat: (message: string, sessionId: string | null, selectedStationId: number | null, context: Criteria) =>
     post<ChatResponse>("/api/chat", {
       message,
       session_id: sessionId,
       selected_station_id: selectedStationId,
+      context,
     }),
   resetChat: (sessionId: string) => post("/api/chat/reset", { session_id: sessionId }),
 };
@@ -120,6 +138,17 @@ export function formatMinutes(m: number): string {
   const r = m % 60;
   return r === 0 ? `${h}h` : `${h}h${String(r).padStart(2, "0")}`;
 }
+
+export const EMPTY_CRITERIA: Criteria = {
+  origin: null,
+  max_travel_minutes: null,
+  themes: [],
+  audience: null,
+  max_walk_minutes: null,
+  difficulty: null,
+  keywords: [],
+  around_station_id: null,
+};
 
 export const TAG_LABELS: Record<string, string> = {
   nature: "Nature",

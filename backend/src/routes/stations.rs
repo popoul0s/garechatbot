@@ -18,6 +18,11 @@ pub async fn search(State(st): State<AppState>, Query(p): Query<SearchParams>) -
     Ok(Json(db::search_stations(&st.db, &p.q, p.limit.unwrap_or(10).min(50)).await?))
 }
 
+/// GET /api/origins — gares de départ disponibles (temps de trajet calculés)
+pub async fn origins(State(st): State<AppState>) -> AppResult<Json<Vec<Station>>> {
+    Ok(Json(db::origins(&st.db).await?))
+}
+
 #[derive(Deserialize)]
 pub struct DetailParams {
     max_walk: Option<i32>,
