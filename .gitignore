@@ -16,3 +16,4 @@ data/
 # Secrets
 .env
 frontend/public/maplibre/
+*.tsbuildinfo
