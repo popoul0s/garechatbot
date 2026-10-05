@@ -38,6 +38,7 @@ TYPE_RULES = [
     ("zoo", {"loisirs", "famille"}),
     ("amusementpark", {"loisirs", "famille"}),
     ("lake", {"eau", "nature"}),
+    ("fishing", {"eau", "nature"}),
     ("beach", {"eau", "nature"}),
     ("mountain", {"montagne", "nature"}),
 ]

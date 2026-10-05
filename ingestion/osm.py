@@ -35,6 +35,7 @@ FILTERS = [
     '["leisure"~"^(park|nature_reserve|playground|water_park|swimming_area|garden)$"]',
     '["natural"~"^(peak|waterfall|cave_entrance|beach|gorge)$"]',
     '["water"="lake"]["name"]',
+    '["leisure"="fishing"]',
 ]
 # Les relations route=hiking ne sont pas interrogées : calculer leur centre est très coûteux pour
 # Overpass. Les itinéraires de randonnée viennent de DATAtourisme ; OSM apporte sommets, cascades, lacs...
@@ -70,6 +71,8 @@ def map_tags(t: dict[str, str]) -> list[str]:
         out |= {"montagne", "panorama", "randonnee", "nature"}
     if natural in ("waterfall", "gorge", "cave_entrance"):
         out |= {"nature", "eau"} if natural != "cave_entrance" else {"nature"}
+    if leisure == "fishing":
+        out |= {"eau", "nature"}
     if natural == "beach" or t.get("water") == "lake":
         out |= {"eau", "nature"}
     if t.get("route") == "hiking":
@@ -91,11 +94,15 @@ def default_name(t: dict[str, str]) -> str | None:
         return "Aire de pique-nique"
     if t.get("tourism") == "viewpoint":
         return "Point de vue"
+    if t.get("leisure") == "fishing":
+        return "Coin de pêche"
     return None
 
 
 def description(t: dict[str, str]) -> str | None:
     parts = [t.get("description:fr") or t.get("description")]
+    if t.get("leisure") == "fishing":
+        parts.append("Lieu de pêche")
     if t.get("ele"):
         parts.append(f"Altitude {t['ele']} m")
     if t.get("route") == "hiking" and t.get("distance"):

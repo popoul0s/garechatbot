@@ -25,7 +25,8 @@ Réponds UNIQUEMENT avec un objet JSON de la forme :
   "audience": "famille"|null,         // "famille" si enfants ou famille mentionnés
   "max_walk_minutes": int|null,       // marche maximale depuis la gare, en minutes
   "difficulty": "facile"|"moyen"|"difficile"|null,
-  "keywords": [string]                // mots-clés concrets utiles à une recherche texte (ex. "lac", "château"), 0 à 4
+  "keywords": [string],               // mots-clés concrets utiles à une recherche texte (ex. "lac", "château", "pêche"), 0 à 4
+  "place": string|null                // lieu de DESTINATION nommé (commune, gare, site), ex. "pêcher à Herbeys" -> "Herbeys"
 }
 Règles :
 - Ne renseigne que ce qui est exprimé dans le DERNIER message ; mets null ou [] sinon.

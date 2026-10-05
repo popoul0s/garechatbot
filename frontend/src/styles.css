@@ -572,6 +572,32 @@ main {
   justify-content: space-between;
   gap: 12px;
 }
+.places-list li.separator {
+  border-top: none;
+  padding-top: 12px;
+}
+.list-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 8px 6px 4px;
+  border-top: 1px solid var(--border);
+}
+.match {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+.match-summary {
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+}
+.detail .note {
+  margin-top: 12px;
+}
 .more {
   margin-top: 8px;
   border: 1px solid var(--border);

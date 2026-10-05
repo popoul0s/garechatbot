@@ -59,6 +59,16 @@ export default function SearchPanel(props: Props) {
         <label htmlFor="ask-input" className="ask-label">
           {props.askAround ? `Votre question sur ${props.askAround.name}` : "Qu'avez-vous envie de faire ?"}
         </label>
+        {!props.askAround && c.place && (
+          <div className="context-chip">
+            <span>
+              Destination : <strong>{c.place}</strong>
+            </span>
+            <button type="button" onClick={() => update({ place: null })} aria-label="Retirer la destination">
+              ✕
+            </button>
+          </div>
+        )}
         {props.askAround && (
           <div className="context-chip">
             <span>

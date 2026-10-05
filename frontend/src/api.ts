@@ -60,6 +60,7 @@ export interface Criteria {
   difficulty: string | null;
   keywords: string[];
   around_station_id: number | null;
+  place: string | null;
 }
 
 export interface SearchOutcome {
@@ -148,6 +149,7 @@ export const EMPTY_CRITERIA: Criteria = {
   difficulty: null,
   keywords: [],
   around_station_id: null,
+  place: null,
 };
 
 export const TAG_LABELS: Record<string, string> = {

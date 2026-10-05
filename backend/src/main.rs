@@ -2,6 +2,7 @@ mod config;
 mod db;
 mod domain;
 mod error;
+mod geo;
 mod llm;
 mod routes;
 mod service;
@@ -52,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
         db,
         cfg: Arc::new(cfg.clone()),
         llm,
+        geo: geo::GeoClient::new(cfg.geo_api_url.clone())?,
         sessions: Arc::new(Mutex::new(HashMap::new())),
     };
     let app = routes::router(state)

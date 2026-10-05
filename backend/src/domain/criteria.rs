@@ -32,6 +32,10 @@ pub struct Criteria {
     pub keywords: Vec<String>,
     /// Gare sélectionnée sur la carte : la recherche se limite alors à ses alentours.
     pub around_station_id: Option<i64>,
+    /// Lieu de destination nommé par l'utilisateur ("pêcher à Herbeys" -> "Herbeys").
+    /// La recherche se limite alors aux gares proches de ce lieu.
+    #[serde(default)]
+    pub place: Option<String>,
 }
 
 impl Criteria {
@@ -53,6 +57,13 @@ impl Criteria {
             .map(|d| fold(&d))
             .filter(|d| ["facile", "moyen", "difficile"].contains(&d.as_str()));
         self.origin = self.origin.map(|o| o.trim().to_string()).filter(|o| !o.is_empty());
+        self.place = self.place.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+        // un lieu identique à l'origine n'est pas une destination
+        if let (Some(p), Some(o)) = (&self.place, &self.origin) {
+            if fold(p) == fold(o) {
+                self.place = None;
+            }
+        }
         self
     }
 
@@ -77,6 +88,7 @@ impl Criteria {
                 previous.keywords.clone()
             },
             around_station_id: self.around_station_id.or(previous.around_station_id),
+            place: self.place.or_else(|| previous.place.clone()),
         }
     }
 
@@ -118,7 +130,7 @@ const THEME_SYNONYMS: &[(&str, &[&str])] = &[
     ("randonnee", &["randonnee", "rando", "balade", "promenade", "sentier", "marche en nature", "trek"]),
     ("montagne", &["montagne", "sommet", "alpage", "massif", "station de ski", "ski"]),
     ("nature", &["nature", "naturel", "foret", "bois", "parc naturel", "plein air", "campagne", "verdure"]),
-    ("eau", &["lac", "riviere", "cascade", "baignade", "plage", "gorges", "eau"]),
+    ("eau", &["lac", "riviere", "cascade", "baignade", "plage", "gorges", "eau", "peche", "pecher", "pecheur"]),
     ("culture", &["culture", "culturel", "culturelle", "spectacle", "art", "exposition", "theatre"]),
     ("patrimoine", &["patrimoine", "historique", "histoire", "chateau", "eglise", "abbaye", "monument", "vieille ville", "medieval"]),
     ("musee", &["musee", "musees"]),
@@ -155,10 +167,25 @@ static RE_MIN: LazyLock<Regex> =
 static RE_WORD_HOURS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(une|un|deux|trois|quatre)\s+heures?(\s+et\s+demie)?|\bdemi[- ]heure").unwrap()
 });
+/// Lieu de destination : "à Herbeys", "vers Annecy", "autour de Vienne", "près d'Aix-les-Bains".
+static RE_PLACE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:\b(?:à|au|aux|vers|autour de|près de|du côté de|dans)\s+|\b(?:autour|près|côté) d['’])([A-ZÀ-Ý][\p{L}'\-]+(?:[ -](?:[A-ZÀ-Ý][\p{L}'\-]+|sur|en|les|le|la|de|du|d'))*)")
+        .unwrap()
+});
+
 static RE_ORIGIN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:\b(?:depuis|au départ de|partant de|de)\s+|\bd['’])([A-ZÀ-Ý][\p{L}'\-]+(?:[ -](?:[A-ZÀ-Ý][\p{L}'\-]+|sur|en|les|le|la))*)")
         .unwrap()
 });
+
+/// Retire les petits mots de liaison capturés en fin de nom ("Aix-les-Bains de" -> "Aix-les-Bains").
+fn clean_place_name(raw: &str) -> String {
+    let mut words: Vec<&str> = raw.split_whitespace().collect();
+    while words.last().is_some_and(|w| w.chars().next().is_some_and(char::is_lowercase)) {
+        words.pop();
+    }
+    words.join(" ")
+}
 
 /// Extraction des critères par règles (sans LLM). Volontairement simple et explicable.
 pub fn extract_with_rules(message: &str) -> Criteria {
@@ -238,8 +265,21 @@ pub fn extract_with_rules(message: &str) -> Criteria {
     }
 
     // Origine : premier nom propre précédé de "de/depuis..." (le message original garde les majuscules).
-    if let Some(cap) = RE_ORIGIN.captures(message) {
-        c.origin = Some(cap[1].trim().to_string());
+    // Destination d'abord ; l'origine ne peut pas être le même nom ("près d'Aix" n'est pas un départ).
+    let place = RE_PLACE.captures(message).and_then(|cap| cap.get(1));
+    if let Some(m) = place {
+        c.place = Some(clean_place_name(m.as_str()));
+    }
+    let origin = RE_ORIGIN
+        .captures_iter(message)
+        .filter_map(|cap| cap.get(1))
+        .find(|m| place.is_none_or(|p| m.start() != p.start()));
+    if let Some(m) = origin {
+        c.origin = Some(clean_place_name(m.as_str()));
+    }
+    // activités sans lieu touristique dédié dans nos thèmes : on les garde comme mots-clés
+    if ["peche", "pecher", "pecheur"].iter().any(|w| has_word(&padded, w)) {
+        c.keywords.push("pêche".into());
     }
 
     c.sanitized()
@@ -289,6 +329,23 @@ mod tests {
         let c = extract_with_rules("Moins de 20 min de marche, à moins de 1h de Grenoble");
         assert_eq!(c.max_walk_minutes, Some(20));
         assert_eq!(c.max_travel_minutes, Some(60));
+    }
+
+    #[test]
+    fn destination_et_peche() {
+        let c = extract_with_rules("Je veux aller pêcher à Herbeys");
+        assert_eq!(c.place.as_deref(), Some("Herbeys"));
+        assert_eq!(c.origin, None);
+        assert!(c.themes.contains(&"eau".to_string()));
+        assert_eq!(c.keywords, vec!["pêche".to_string()]);
+
+        let c = extract_with_rules("Une rando près d'Aix-les-Bains depuis Lyon Part-Dieu");
+        assert_eq!(c.place.as_deref(), Some("Aix-les-Bains"));
+        assert_eq!(c.origin.as_deref(), Some("Lyon Part-Dieu"));
+
+        // "moins de 1h30 de Grenoble" : Grenoble est l'origine, pas une destination
+        let c = extract_with_rules("Une sortie nature à moins de 1h30 de Grenoble");
+        assert_eq!(c.place, None);
     }
 
     #[test]

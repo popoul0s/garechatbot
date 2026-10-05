@@ -173,6 +173,8 @@ export default function App() {
               pois={detail.pois}
               travel={travelFor(detail.station.id)}
               originName={criteria.origin}
+              wanted={outcome ? [...criteria.themes, ...(criteria.audience === "famille" ? ["famille"] : [])] : []}
+              keywords={outcome ? criteria.keywords : []}
               canGoBack={!!outcome}
               focusedPoiId={focusedPoi}
               onBack={() => setDetail(null)}

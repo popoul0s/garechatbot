@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::config::Config;
 use crate::domain::criteria::Criteria;
+use crate::geo::GeoClient;
 use crate::llm::LlmClient;
 
 /// Contexte de conversation, conservé en mémoire le temps de la session (pas de persistance : hors périmètre).
@@ -22,5 +23,6 @@ pub struct AppState {
     pub db: PgPool,
     pub cfg: Arc<Config>,
     pub llm: Option<LlmClient>,
+    pub geo: GeoClient,
     pub sessions: Arc<Mutex<HashMap<Uuid, Session>>>,
 }

@@ -95,6 +95,7 @@ cd frontend && npm install && npm run dev
 | GTFS TER | transport.data.gouv.fr → « Horaires des TER SNCF » → ressource GTFS | Télécharger le zip et passer son chemin (ou l'URL) à `--gtfs`. La journée type (jour de semaine le plus chargé) est choisie automatiquement. |
 | SNCF Open Data | ressources.data.sncf.com | `python run_all.py sncf --inspect` affiche les champs disponibles. Ajuster `DATASETS` / `FIELDS` dans `sncf.py` si les noms ont changé. |
 | OpenStreetMap | API Overpass publique | Environ 2 s de pause entre deux lots de gares. `--osm-limit 5` permet un test rapide. |
+| API Géo (geo.api.gouv.fr) | Appelée par l'API au moment de la recherche | Localise une commune demandée comme destination (« pêcher à Herbeys »). Si elle n'a pas de gare, on cherche autour des gares à moins de 12 km. Gratuite, sans clé. |
 | DATAtourisme | diffuseur.datatourisme.fr | Créer un compte, puis un flux « Auvergne-Rhône-Alpes », format JSON-LD (un fichier par objet). **Le faire tôt : la génération du flux prend du temps.** |
 
 `--origins` accepte plusieurs gares, par exemple `"Grenoble,Lyon Part-Dieu"`. Les temps de trajet ne sont calculés que depuis ces gares.

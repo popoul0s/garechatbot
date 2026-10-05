@@ -61,6 +61,10 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
             if hits.is_empty() {
                 return None;
             }
+            // un même nom ("Aire de jeux") ne compte qu'une fois : on garde le plus proche
+            hits.sort_by_key(|h| h.walk_minutes);
+            let mut seen = std::collections::HashSet::new();
+            hits.retain(|h| seen.insert(h.poi.name.to_lowercase()));
             // meilleurs POI d'abord, puis les plus proches
             hits.sort_by(|a, b| {
                 b.match_score
@@ -217,6 +221,18 @@ mod tests {
         assert_eq!(recos[0].station.name, "Avec famille");
         assert_eq!(recos[0].breakdown.theme, 1.0);
         assert_eq!(recos[1].breakdown.theme, 0.5);
+    }
+
+    #[test]
+    fn les_doublons_de_nom_ne_gonflent_pas_la_richesse() {
+        let mut rows: Vec<CandidateRow> = (0..8).map(|i| row(1, "Ville", 30, i, &["famille"], 5 + i as i32)).collect();
+        for r in &mut rows {
+            r.poi.name = "Aire de jeux".into();
+        }
+        let recos = rank(rows, &Criteria { audience: Some("famille".into()), ..Default::default() }, 1);
+        assert_eq!(recos[0].pois.len(), 1);
+        assert_eq!(recos[0].pois[0].walk_minutes, 5);
+        assert!(recos[0].breakdown.richness <= 0.2);
     }
 
     #[test]

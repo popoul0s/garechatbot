@@ -72,12 +72,40 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
         return Ok(outcome);
     }
 
+    // Gares auxquelles limiter la recherche : gare choisie sur la carte, ou gares proches du lieu demandé.
+    let mut restrict: Vec<i64> = around.iter().map(|a| a.id).collect();
+    if restrict.is_empty() {
+        if let Some(place) = &criteria.place {
+            match resolve_place(state, place).await? {
+                PlaceResolution::Stations(ids, note) => {
+                    restrict = ids;
+                    outcome.notes.extend(note);
+                }
+                PlaceResolution::NoStationNearby(note) => {
+                    outcome.notes.push(note);
+                    return Ok(outcome);
+                }
+                PlaceResolution::Unknown => {
+                    outcome.notes.push(format!(
+                        "Je ne trouve pas « {place} » parmi les gares et communes d'Auvergne-Rhône-Alpes. \
+                         Vérifiez l'orthographe, ou retirez la destination pour chercher partout."
+                    ));
+                    return Ok(outcome);
+                }
+                PlaceResolution::GeoUnavailable => outcome.notes.push(format!(
+                    "Impossible de localiser « {place} » pour le moment : je cherche dans toutes les gares accessibles."
+                )),
+            }
+        }
+    }
+
     let rows = db::candidates(
         &state.db,
         origin_id,
         criteria,
         outcome.applied_max_travel_minutes,
         outcome.applied_max_walk_minutes,
+        &restrict,
     )
     .await?;
     outcome.recommendations = scoring::rank(rows, criteria, MAX_RECOMMENDATIONS);
@@ -86,7 +114,7 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
     if outcome.recommendations.is_empty() {
         let travel = (outcome.applied_max_travel_minutes + 30).min(240);
         let walk = (outcome.applied_max_walk_minutes + 15).min(60);
-        let rows = db::candidates(&state.db, origin_id, criteria, travel, walk).await?;
+        let rows = db::candidates(&state.db, origin_id, criteria, travel, walk, &restrict).await?;
         let relaxed = scoring::rank(rows, criteria, MAX_RECOMMENDATIONS);
         if relaxed.is_empty() {
             outcome.notes.push(
@@ -108,4 +136,47 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
     }
 
     Ok(outcome)
+}
+
+/// Rayon dans lequel on cherche une gare autour d'une commune sans gare.
+const PLACE_RADIUS_M: f64 = 12_000.0;
+
+enum PlaceResolution {
+    /// Gares à utiliser, avec une explication éventuelle pour l'utilisateur.
+    Stations(Vec<i64>, Option<String>),
+    NoStationNearby(String),
+    Unknown,
+    GeoUnavailable,
+}
+
+/// "Herbeys" -> gare du même nom si elle existe, sinon gares les plus proches de la commune (API Géo).
+async fn resolve_place(state: &AppState, place: &str) -> AppResult<PlaceResolution> {
+    if let Some(s) = db::station_named(&state.db, place).await? {
+        return Ok(PlaceResolution::Stations(vec![s.id], None));
+    }
+    let commune = match state.geo.find_commune(place).await {
+        Ok(Some(c)) => c,
+        Ok(None) => return Ok(PlaceResolution::Unknown),
+        Err(e) => {
+            tracing::warn!(error = %e, "API Géo injoignable");
+            return Ok(PlaceResolution::GeoUnavailable);
+        }
+    };
+    let near = db::stations_near(&state.db, commune.lon, commune.lat, PLACE_RADIUS_M, 3).await?;
+    if near.is_empty() {
+        return Ok(PlaceResolution::NoStationNearby(format!(
+            "{} n'a pas de gare à moins de {} km : ce lieu n'est pas accessible en train dans nos données.",
+            commune.nom,
+            PLACE_RADIUS_M as i32 / 1000
+        )));
+    }
+    let list = near
+        .iter()
+        .map(|n| format!("{} ({:.1} km)", n.station.name, n.distance_m as f64 / 1000.0).replace('.', ","))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Ok(PlaceResolution::Stations(
+        near.iter().map(|n| n.station.id).collect(),
+        Some(format!("{} n'a pas de gare : je cherche autour des gares les plus proches : {list}.", commune.nom)),
+    ))
 }

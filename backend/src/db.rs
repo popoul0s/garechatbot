@@ -101,6 +101,43 @@ pub async fn has_travel_times(db: &PgPool, origin_id: i64) -> sqlx::Result<bool>
         .await
 }
 
+/// Gare dont le nom ou la commune correspond exactement au lieu demandé.
+pub async fn station_named(db: &PgPool, place: &str) -> sqlx::Result<Option<Station>> {
+    sqlx::query_as::<_, Station>(&format!(
+        "SELECT {STATION_COLS} FROM stations s
+         WHERE unaccent(lower(s.name)) = unaccent(lower($1))
+            OR unaccent(lower(coalesce(s.city, ''))) = unaccent(lower($1))
+            OR unaccent(lower(s.name)) LIKE unaccent(lower($1)) || ' %'
+         ORDER BY length(s.name) LIMIT 1"
+    ))
+    .bind(place)
+    .fetch_optional(db)
+    .await
+}
+
+#[derive(sqlx::FromRow)]
+pub struct NearStation {
+    #[sqlx(flatten)]
+    pub station: Station,
+    pub distance_m: i32,
+}
+
+/// Gares les plus proches d'un point, dans un rayon donné.
+pub async fn stations_near(db: &PgPool, lon: f64, lat: f64, max_m: f64, limit: i64) -> sqlx::Result<Vec<NearStation>> {
+    sqlx::query_as::<_, NearStation>(&format!(
+        "SELECT {STATION_COLS}, round(ST_Distance(s.geom, p.g))::int AS distance_m
+         FROM stations s, (SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS g) p
+         WHERE ST_DWithin(s.geom, p.g, $3)
+         ORDER BY ST_Distance(s.geom, p.g) LIMIT $4"
+    ))
+    .bind(lon)
+    .bind(lat)
+    .bind(max_m)
+    .bind(limit)
+    .fetch_all(db)
+    .await
+}
+
 /// Recherche structurée : toutes les paires (gare, POI) respectant les contraintes dures
 /// (temps de trajet, temps de marche). Le classement est fait ensuite par `scoring::rank`.
 pub async fn candidates(
@@ -109,6 +146,7 @@ pub async fn candidates(
     criteria: &Criteria,
     max_travel: i32,
     max_walk: i32,
+    restrict_to: &[i64],
 ) -> sqlx::Result<Vec<CandidateRow>> {
     let keywords = criteria.keywords.join(" or ");
     sqlx::query_as::<_, CandidateRow>(&format!(
@@ -124,14 +162,14 @@ pub async fn candidates(
          LEFT JOIN travel_times t ON t.origin_id = $1 AND t.station_id = s.id
          JOIN station_poi sp ON sp.station_id = s.id AND sp.walk_minutes <= $3
          JOIN pois p ON p.id = sp.poi_id
-         WHERE CASE WHEN $5::bigint IS NOT NULL THEN s.id = $5
+         WHERE CASE WHEN cardinality($5::bigint[]) > 0 THEN s.id = ANY($5)
                     ELSE s.id <> $1 AND t.minutes <= $2 END"
     ))
     .bind(origin_id)
     .bind(max_travel)
     .bind(max_walk)
     .bind(keywords)
-    .bind(criteria.around_station_id)
+    .bind(restrict_to)
     .fetch_all(db)
     .await
 }
