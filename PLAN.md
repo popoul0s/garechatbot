@@ -24,9 +24,9 @@
 |---|---|---|
 | Format | **Option A : web responsive** | Une seule base de code ; carte sur grand écran, chat sur mobile |
 | Frontend | React + Vite + **MapLibre GL** (ou Leaflet) | Gratuit, fonds OSM, couches GeoJSON |
-| Backend | **FastAPI (Python)** | Même langage que les scripts data et IA ; Swagger généré automatiquement |
+| Backend | **Rust (axum + sqlx)** | Performant et sobre en ressources, typage strict des critères et réponses ; l'ingestion reste en Python |
 | Base de données | **PostgreSQL + PostGIS + pgvector** | Géospatial (`ST_DWithin`), SQL et vecteurs dans un seul outil |
-| Ingestion | Scripts Python (pandas, geopandas) | Pipeline reproductible |
+| Ingestion | Scripts Python (pandas) | Pipeline reproductible, découplé de l'API par la base |
 | LLM cloud | Claude Haiku, GPT-4o-mini ou Mistral API | Pour l'extraction de critères et la rédaction |
 | LLM local | **Ollama** + Mistral 7B ou Llama 3.1 8B | Sert à la comparaison et de solution de repli |
 | Embeddings | Modèle multilingue open source (ex. `multilingual-e5-small`) | Gratuit, tourne sur CPU |

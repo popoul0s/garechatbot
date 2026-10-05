@@ -1,0 +1,60 @@
+[
+  {
+    "id": "sujet-1",
+    "message": "Je cherche une sortie nature à moins de 1h30 de Grenoble, avec une randonnée facile et moins de 20 minutes de marche depuis la gare.",
+    "expected": { "origin": "Grenoble", "max_travel_minutes": 90, "max_walk_minutes": 20, "themes": ["nature", "randonnee"], "difficulty": "facile" }
+  },
+  {
+    "id": "sujet-2",
+    "message": "Je voudrais passer une journée à la montagne sans voiture, à moins de 2 heures de Grenoble, avec une activité adaptée à des enfants.",
+    "expected": { "origin": "Grenoble", "max_travel_minutes": 120, "themes": ["montagne"], "audience": "famille" }
+  },
+  {
+    "id": "montagne",
+    "message": "Je veux aller à la montagne sans voiture.",
+    "expected": { "themes": ["montagne"] }
+  },
+  {
+    "id": "moins-1h",
+    "message": "Je cherche une activité à moins d'une heure de Grenoble.",
+    "expected": { "origin": "Grenoble", "max_travel_minutes": 60 }
+  },
+  {
+    "id": "enfants",
+    "message": "Que faire avec deux enfants ?",
+    "expected": { "audience": "famille" }
+  },
+  {
+    "id": "rando-patrimoine",
+    "message": "Je cherche une destination avec randonnée et patrimoine.",
+    "expected": { "themes": ["randonnee", "patrimoine"] }
+  },
+  {
+    "id": "marche-15",
+    "message": "Je ne veux pas marcher plus de 15 minutes après la gare.",
+    "expected": { "max_walk_minutes": 15 }
+  },
+  {
+    "id": "nature-train",
+    "message": "Je veux une activité nature accessible en train.",
+    "expected": { "themes": ["nature"] }
+  },
+  {
+    "id": "impossible",
+    "message": "Je veux un musée à moins de 5 minutes de train de Grenoble.",
+    "expected": { "max_travel_minutes": 5, "themes": ["musee"] },
+    "expect_no_result": true
+  },
+  {
+    "id": "origine-inconnue",
+    "message": "Une randonnée au départ de Marseille.",
+    "expected": { "origin": "Marseille", "themes": ["randonnee"] },
+    "expect_no_result": true
+  },
+  {
+    "id": "relance",
+    "message": "Une sortie nature à moins de 1h30 de Grenoble.",
+    "followup": "Et si je préfère finalement quelque chose de culturel ?",
+    "expected": { "origin": "Grenoble", "max_travel_minutes": 90, "themes": ["culture"] }
+  }
+]

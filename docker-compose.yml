@@ -1,0 +1,29 @@
+services:
+  db:
+    build: ./db
+    environment:
+      POSTGRES_USER: gare
+      POSTGRES_PASSWORD: gare
+      POSTGRES_DB: garechatbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gare -d garechatbot"]
+      interval: 5s
+      retries: 10
+
+  # LLM auto-hébergé (comparaison cloud vs local). Lancer avec : docker compose --profile llm up -d
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  pgdata:
+  ollama:
