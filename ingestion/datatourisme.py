@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import json
 import zipfile
-from pathlib import Path
 from typing import Any, Iterator
 
-from common import connect, download, in_aura
+from common import connect, in_aura, resolve_source
 
 # Types DATAtourisme ignorés (hors périmètre « découverte ») et correspondance mots-clés -> thèmes
 SKIP_TYPES = ("accommodation", "foodestablishment", "restaurant", "entertainmentandevent", "event", "store", "service")
@@ -55,9 +54,7 @@ def first_fr(value: Any) -> str | None:
 
 
 def iter_objects(source: str) -> Iterator[dict]:
-    path = Path(source)
-    if not path.exists():
-        path = download(source, "datatourisme.zip")
+    path = resolve_source(source, "datatourisme.zip")
     if path.is_dir():
         for f in path.rglob("*.json"):
             if f.name != "index.json":

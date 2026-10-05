@@ -9,7 +9,7 @@ import time
 
 import requests
 
-from common import connect
+from common import connect, require_stations
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 RADIUS_M = 3000
@@ -107,6 +107,7 @@ def query(stations: list[tuple[float, float]]) -> list[dict]:
 def run(limit_stations: int | None = None) -> None:
     print("OSM : récupération des POI autour des gares (Overpass)")
     with connect() as conn, conn.cursor() as cur:
+        require_stations(cur)
         cur.execute("SELECT lon, lat FROM stations ORDER BY id")
         stations = cur.fetchall()[:limit_stations]
         total = 0

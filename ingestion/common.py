@@ -59,6 +59,27 @@ def uic_from(value: str) -> str | None:
     return m[-1] if m else None
 
 
+def resolve_source(source: str, filename: str) -> Path:
+    """Chemin local existant, ou URL http(s) téléchargée dans data/. Sinon : message explicite."""
+    if source.startswith(("http://", "https://")):
+        return download(source, filename)
+    path = Path(source)
+    if path.exists():
+        return path
+    available = sorted(p.name for p in DATA_DIR.iterdir()) if DATA_DIR.exists() else []
+    raise SystemExit(
+        f"Fichier introuvable : {source}\n"
+        f"  Indiquez le chemin réel du fichier téléchargé, ou une URL http(s).\n"
+        f"  Contenu de {DATA_DIR} : {', '.join(available) or '(vide)'}"
+    )
+
+
+def require_stations(cur) -> None:
+    cur.execute("SELECT count(*) FROM stations")
+    if cur.fetchone()[0] == 0:
+        raise SystemExit("Aucune gare en base : lancez d'abord l'étape gtfs (python run_all.py gtfs --gtfs ...).")
+
+
 def download(url: str, filename: str, force: bool = False) -> Path:
     """Télécharge une fois dans data/ (cache local)."""
     target = DATA_DIR / filename

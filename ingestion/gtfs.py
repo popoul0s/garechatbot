@@ -13,11 +13,10 @@ import io
 import zipfile
 from bisect import bisect_left
 from collections import defaultdict
-from pathlib import Path
 
 import pandas as pd
 
-from common import connect, download, fold, in_aura, uic_from
+from common import connect, fold, in_aura, resolve_source, uic_from
 
 MIN_TRANSFER_MIN = 5
 MAX_TRAVEL_MIN = 240
@@ -39,9 +38,7 @@ def _to_min(hms: str) -> int:
 
 
 def load(source: str) -> dict[str, pd.DataFrame]:
-    path = Path(source)
-    if not path.exists():
-        path = download(source, "gtfs.zip")
+    path = resolve_source(source, "gtfs.zip")
     with zipfile.ZipFile(path) as z:
         tables = {n: _read(z, f"{n}.txt") for n in ["stops", "routes", "trips", "stop_times", "calendar", "calendar_dates"]}
     for required in ["stops", "routes", "trips", "stop_times"]:

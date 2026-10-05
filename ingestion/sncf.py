@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import requests
 
-from common import connect, uic_from
+from common import connect, require_stations, uic_from
 
 API = "https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/{}/exports/json"
 
@@ -74,6 +74,7 @@ def inspect() -> None:
 def run() -> None:
     print("SNCF Open Data : enrichissement des gares")
     with connect() as conn, conn.cursor() as cur:
+        require_stations(cur)
         cur.execute("SELECT uic FROM stations")
         known = {r[0] for r in cur.fetchall()}
 
