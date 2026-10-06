@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import io
+import re
 import zipfile
 from bisect import bisect_left
 from collections import defaultdict
@@ -24,6 +25,14 @@ FIRST_DEPARTURE = 6 * 60
 LAST_DEPARTURE = 20 * 60
 # Types de route GTFS ferroviaires (2 = train, 100-117 = types étendus "rail")
 RAIL_ROUTE_TYPES = {2} | set(range(100, 118))
+# Le GTFS SNCF indique le mode dans l'identifiant de l'arrêt : "StopPoint:OCETrain TER-87…" pour un train,
+# "StopPoint:OCECar TER-87…" pour un car. Les cars TER peuvent être déclarés avec un route_type
+# ferroviaire : on écarte donc aussi tout trajet qui dessert un arrêt routier.
+ROAD_STOP_RE = re.compile(r"OCE\s*(car|bus|autocar|navette)", re.IGNORECASE)
+
+
+def is_road_stop(stop_id: str) -> bool:
+    return bool(ROAD_STOP_RE.search(stop_id))
 
 
 def _read(z: zipfile.ZipFile, name: str, **kw) -> pd.DataFrame | None:
@@ -78,6 +87,7 @@ def build_stations(t: dict[str, pd.DataFrame], rail_stop_ids: set[str]) -> pd.Da
     stops = stops[stops["uic"].notna()]
     stops["lon"] = stops["stop_lon"].astype(float)
     stops["lat"] = stops["stop_lat"].astype(float)
+    # une gare = un code UIC desservi par au moins un arrêt ferroviaire (les gares routières sont exclues)
     rail_uics = set(stops[stops["stop_id"].isin(rail_stop_ids)]["uic"])
     stops = stops[stops["uic"].isin(rail_uics)]
     # une ligne par UIC : on privilégie la zone d'arrêt (location_type=1) pour le nom
@@ -97,6 +107,12 @@ def connections_for(t: dict[str, pd.DataFrame], services: set[str]) -> tuple[lis
 
     st = t["stop_times"]
     st = st[st["trip_id"].isin(trip_ids)].copy()
+    road_trips = set(st[st["stop_id"].map(is_road_stop)]["trip_id"])
+    if road_trips:
+        print(f"  {len(road_trips)} trajets en car/bus écartés (arrêts routiers)")
+        trip_ids -= road_trips
+        trips = trips[trips["trip_id"].isin(trip_ids)]
+        st = st[st["trip_id"].isin(trip_ids)]
     st["seq"] = st["stop_sequence"].astype(int)
     st["uic"] = st["stop_id"].map(uic_from)
     st = st[st["uic"].notna() & (st["arrival_time"] != "") & (st["departure_time"] != "")]
@@ -109,7 +125,8 @@ def connections_for(t: dict[str, pd.DataFrame], services: set[str]) -> tuple[lis
             if u != v:
                 conns.append((_to_min(dep), _to_min(arr), u, v, trip_id))
     conns.sort()
-    return conns, set(t["stop_times"][t["stop_times"]["trip_id"].isin(trip_ids)]["stop_id"]), dict(
+    rail_stop_ids = {sid for sid in st["stop_id"].unique() if not is_road_stop(sid)}
+    return conns, rail_stop_ids, dict(
         zip(trips["trip_id"], trips["route_id"])
     )
 
@@ -194,6 +211,10 @@ def run(source: str, origins: list[str]) -> None:
                        sources = ARRAY(SELECT DISTINCT unnest(stations.sources || EXCLUDED.sources))""",
                 (s.uic, s.name, s.lon, s.lat, s.lon, s.lat),
             )
+        # purge des gares qui ne sont plus retenues (ex. gares routières importées auparavant)
+        cur.execute("DELETE FROM stations WHERE NOT (uic = ANY(%s))", (list(stations["uic"]),))
+        if cur.rowcount:
+            print(f"  {cur.rowcount} anciennes gares non ferroviaires supprimées")
         cur.execute("SELECT uic, id, name FROM stations")
         rows = cur.fetchall()
         ids = {uic: sid for uic, sid, _ in rows}
