@@ -665,6 +665,12 @@ main {
 }
 
 /* Marqueurs de carte (HTML) : toujours sur fond clair, la carte restant claire en mode sombre */
+/* étiquettes de gare et de trajet au-dessus des numéros de lieux */
+.maplibregl-marker.origin-marker,
+.maplibregl-marker.station-marker,
+.maplibregl-marker.transfer-marker {
+  z-index: 3;
+}
 .origin-marker,
 .station-marker {
   background: #1f2937;

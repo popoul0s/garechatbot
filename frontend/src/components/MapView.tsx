@@ -254,9 +254,16 @@ export default function MapView(props: Props) {
           }
         : EMPTY,
     );
-    if (j) {
+    // Une seule étiquette par gare : la gare de la fiche porte l'heure de départ (retour) ou
+    // d'arrivée (aller) ; l'autre extrémité du trajet reçoit sa propre étiquette.
+    let stationTime = "";
+    if (j && detailStation) {
       const first = j.legs[0].from;
-      addMarker(el("origin-marker", `${escapeHtml(j.departure)} · ${escapeHtml(first.name)}`), [first.lon, first.lat]);
+      const last = j.legs[j.legs.length - 1].to;
+      if (first.station_id === detailStation.id) stationTime = ` · départ ${j.departure}`;
+      else addMarker(el("origin-marker", `Départ ${escapeHtml(j.departure)} · ${escapeHtml(first.name)}`), [first.lon, first.lat]);
+      if (last.station_id === detailStation.id) stationTime = ` · arrivée ${j.arrival}`;
+      else addMarker(el("origin-marker", `Arrivée ${escapeHtml(j.arrival)} · ${escapeHtml(last.name)}`), [last.lon, last.lat]);
       j.legs.slice(1).forEach((l) =>
         addMarker(
           el("transfer-marker", `Correspondance · ${escapeHtml(l.from.name)} (${l.wait_before_min} min)`),
@@ -267,7 +274,11 @@ export default function MapView(props: Props) {
 
     if (mode === "detail" && detailStation) {
       // étiquette au-dessus de la gare (ancre en bas) pour ne pas masquer les lieux voisins
-      addMarker(el("station-marker", `🚆 ${escapeHtml(detailStation.name)}`), [detailStation.lon, detailStation.lat], "bottom");
+      addMarker(
+        el("station-marker", `🚆 ${escapeHtml(detailStation.name)}${escapeHtml(stationTime)}`),
+        [detailStation.lon, detailStation.lat],
+        "bottom",
+      );
       detailPois.forEach((p, i) => {
         const cat = categoryOf(p.tags);
         const div = el("poi-marker", String(i + 1), p.name);
