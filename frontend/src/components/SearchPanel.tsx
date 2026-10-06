@@ -13,7 +13,7 @@ interface Props {
 }
 
 const DURATIONS = [30, 60, 90, 120, 180];
-const WALKS = [10, 20, 30];
+const WALKS = [5, 10, 20, 30];
 const THEMES = ["nature", "randonnee", "montagne", "eau", "culture", "patrimoine", "musee", "loisirs"];
 
 /** Étapes 1 et 2 : gare de départ, puis envie (texte libre ou filtres). */

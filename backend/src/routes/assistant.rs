@@ -7,7 +7,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::criteria::{extract_with_rules, Criteria};
+use crate::domain::criteria::{extract_with_rules, is_follow_up, Criteria};
 use crate::error::{AppError, AppResult};
 use crate::llm::{self, Answer, Usage};
 use crate::service::{self, SearchOutcome};
@@ -109,7 +109,12 @@ pub async fn chat(State(st): State<AppState>, Json(req): Json<ChatRequest>) -> A
     };
     timings.extraction_ms = t.elapsed().as_millis();
 
-    // 2. Fusion avec le contexte de session ; la gare sélectionnée sur la carte fait foi.
+    // 2. Fusion avec le contexte de session (seulement pour une relance) ; la gare sélectionnée fait foi.
+    let previous = if is_follow_up(message, &extracted) {
+        previous
+    } else {
+        Criteria { origin: previous.origin.clone(), ..Default::default() }
+    };
     let mut criteria = extracted.merged_onto(&previous);
     criteria.around_station_id = req.selected_station_id;
 

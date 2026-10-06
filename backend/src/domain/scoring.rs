@@ -176,6 +176,15 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
         })
         .collect();
 
+    // Si des gares couvrent au moins une envie précise (lac, rando, musée...), on écarte celles
+    // qui ne couvrent que l'envie vague « nature » : un square n'est pas une réponse à « balade lac ».
+    let specific: Vec<&String> = wanted.iter().filter(|t| theme_weight(t) > theme_weight("nature")).collect();
+    if !specific.is_empty() {
+        let covers_specific = |r: &Recommendation| specific.iter().any(|t| !r.missing_themes.contains(t));
+        if recos.iter().any(covers_specific) {
+            recos.retain(covers_specific);
+        }
+    }
     recos.sort_by(|a, b| b.score.total_cmp(&a.score).then(a.station.name.cmp(&b.station.name)));
     recos.truncate(limit);
     recos
@@ -280,8 +289,8 @@ mod tests {
         let recos = rank(rows, &criteria, 3);
         assert_eq!(recos[0].station.name, "Avec famille");
         assert_eq!(recos[0].breakdown.theme, 1.0);
-        assert!(recos[1].breakdown.theme < 0.5, "seul le thème vague « nature » est couvert");
-        assert_eq!(recos[1].missing_themes, vec!["famille".to_string()]);
+        // la gare sans rien pour les enfants ne couvre que « nature » (vague) : elle est écartée
+        assert_eq!(recos.len(), 1);
     }
 
     #[test]
@@ -328,6 +337,18 @@ mod tests {
         rows[1].poi.name = "Lac".into();
         let recos = rank(rows, &criteria, 1);
         assert_eq!(recos[0].pois[0].poi.name, "Lac");
+    }
+
+    #[test]
+    fn une_gare_qui_n_a_que_de_la_nature_est_ecartee() {
+        let criteria = Criteria { themes: vec!["randonnee".into(), "eau".into()], ..Default::default() };
+        let rows = vec![
+            row(1, "Parc seulement", 5, 10, &["nature", "famille"], 2),
+            row(2, "Lac", 40, 20, &["eau", "nature"], 10),
+        ];
+        // le parc ne couvre ni randonnée ni lac : il n'est pas proposé
+        let recos = rank(rows, &criteria, 5);
+        assert_eq!(recos.iter().map(|r| r.station.name.as_str()).collect::<Vec<_>>(), vec!["Lac"]);
     }
 
     #[test]

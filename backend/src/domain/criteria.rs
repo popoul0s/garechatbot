@@ -209,6 +209,21 @@ fn station_mention(folded: &str) -> Option<String> {
     Some(words.iter().map(|w| title(w)).collect::<Vec<_>>().join(" "))
 }
 
+/// Le message prolonge-t-il la recherche précédente (« et si plutôt culturel ? », « avec des enfants »)
+/// ou est-ce une nouvelle demande (« balade lac ») ? Une nouvelle demande ne garde que la gare de départ :
+/// sinon des contraintes d'une recherche antérieure (5 min de marche...) s'appliqueraient en silence.
+pub fn is_follow_up(message: &str, extracted: &Criteria) -> bool {
+    let text = fold(message);
+    let padded = padded_words(&text);
+    let starts = ["et ", "et si", "plutot", "finalement", "sinon", "mais ", "pareil", "meme chose", "et avec", "et sans"];
+    let anywhere = ["plutot", "finalement", "a la place", "aussi", "egalement", "pareil", "plus pres", "plus loin"];
+    let trimmed = text.trim_start();
+    starts.iter().any(|w| trimmed.starts_with(w))
+        || anywhere.iter().any(|w| has_word(&padded, w))
+        // simple précision de contrainte, sans nouvelle envie ni nouveau lieu (« moins de 15 min de marche »)
+        || (extracted.themes.is_empty() && extracted.keywords.is_empty() && extracted.place.is_none())
+}
+
 /// Retire les petits mots de liaison capturés en fin de nom ("Aix-les-Bains de" -> "Aix-les-Bains").
 fn clean_place_name(raw: &str) -> String {
     let mut words: Vec<&str> = raw.split_whitespace().collect();
@@ -281,10 +296,6 @@ pub fn extract_with_rules(message: &str) -> Criteria {
         if words.iter().any(|w| has_word(&padded, w)) {
             c.themes.push(theme.to_string());
         }
-    }
-    // "randonnée" implique un contexte nature
-    if c.themes.iter().any(|t| t == "randonnee") && !c.themes.iter().any(|t| t == "nature") {
-        c.themes.push("nature".into());
     }
 
     if ["enfant", "famille", "gamin", "petits", "bambin", "ados", "adolescent"].iter().any(|w| has_word(&padded, w)) {
@@ -400,6 +411,18 @@ mod tests {
         let c = extract_with_rules("Une balade autour de la gare de Grenoble depuis Grenoble");
         assert_eq!(c.place.as_deref(), Some("Grenoble"));
         assert_eq!(c.origin.as_deref(), Some("Grenoble"));
+    }
+
+    #[test]
+    fn nouvelle_demande_ou_relance() {
+        let check = |m: &str| is_follow_up(m, &extract_with_rules(m));
+        assert!(!check("balade lac"));
+        assert!(!check("Je cherche un musée"));
+        assert!(check("Et si je préfère finalement quelque chose de culturel ?"));
+        assert!(check("avec des enfants"));
+        assert!(check("moins de 15 minutes de marche"));
+        // « balade » n'ajoute plus « nature » d'office
+        assert_eq!(extract_with_rules("balade lac").themes, vec!["randonnee".to_string(), "eau".to_string()]);
     }
 
     #[test]
