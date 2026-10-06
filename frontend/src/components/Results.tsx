@@ -12,9 +12,14 @@ interface Props {
 const EXAMPLES_IF_EMPTY = ["Élargissez le temps de train", "Retirez une envie", "Augmentez la marche autorisée"];
 
 function summary(c: Criteria, o: SearchOutcome): string {
-  const parts = [`depuis ${o.origin?.name ?? c.origin ?? "votre gare"}`];
-  if (c.place) parts.push(`vers ${c.place}`);
-  parts.push(`moins de ${formatMinutes(o.applied_max_travel_minutes)} de train`);
+  const origin = o.origin?.name ?? c.origin ?? "votre gare";
+  const parts: string[] = [];
+  if (c.place) {
+    // recherche limitée aux gares du lieu demandé : le temps de train n'est pas un filtre
+    parts.push(`autour de ${c.place}`, `départ ${origin}`);
+  } else {
+    parts.push(`depuis ${origin}`, `moins de ${formatMinutes(o.applied_max_travel_minutes)} de train`);
+  }
   parts.push(`moins de ${o.applied_max_walk_minutes} min à pied`);
   return parts.join(", ");
 }

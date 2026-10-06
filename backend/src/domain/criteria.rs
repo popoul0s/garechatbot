@@ -58,12 +58,7 @@ impl Criteria {
             .filter(|d| ["facile", "moyen", "difficile"].contains(&d.as_str()));
         self.origin = self.origin.map(|o| o.trim().to_string()).filter(|o| !o.is_empty());
         self.place = self.place.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
-        // un lieu identique à l'origine n'est pas une destination
-        if let (Some(p), Some(o)) = (&self.place, &self.origin) {
-            if fold(p) == fold(o) {
-                self.place = None;
-            }
-        }
+        // NB : un lieu identique à l'origine reste valable (« que faire autour de la gare de Grenoble »)
         self
     }
 
@@ -178,6 +173,42 @@ static RE_ORIGIN: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
+static RE_GARE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\bgare (?:de |d'|du |des )?([a-z0-9'\- ]+)").unwrap());
+
+/// Mots qui terminent un nom de gare dans une phrase ("gare de grenoble avec des enfants").
+const NAME_STOP: &[&str] = &[
+    "avec", "pour", "et", "en", "a", "au", "aux", "depuis", "ou", "qui", "que", "dans", "un", "une", "des", "je",
+    "on", "nous", "moins", "plus", "sans", "si", "ce", "cette", "entre", "vers", "apres", "avant", "pres", "autour",
+    "pas", "mais", "car", "puis", "svp", "stp",
+];
+
+/// Nom de gare cité après « gare de », sur le texte normalisé (minuscules sans accents), remis en forme.
+fn station_mention(folded: &str) -> Option<String> {
+    let cap = RE_GARE.captures(folded)?;
+    let words: Vec<&str> = cap[1]
+        .split_whitespace()
+        .enumerate()
+        .take_while(|(i, w)| *i == 0 && ["la", "le", "les"].contains(w) || !NAME_STOP.contains(w))
+        .map(|(_, w)| w)
+        .take(4)
+        .collect();
+    if words.is_empty() || words.iter().all(|w| ["la", "le", "les"].contains(w)) {
+        return None;
+    }
+    // "saint-marcellin" -> "Saint-Marcellin" (l'affichage ; la recherche ignore casse et accents)
+    let title = |w: &str| {
+        w.split('-')
+            .map(|p| {
+                let mut c = p.chars();
+                c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+            })
+            .collect::<Vec<_>>()
+            .join("-")
+    };
+    Some(words.iter().map(|w| title(w)).collect::<Vec<_>>().join(" "))
+}
+
 /// Retire les petits mots de liaison capturés en fin de nom ("Aix-les-Bains de" -> "Aix-les-Bains").
 fn clean_place_name(raw: &str) -> String {
     let mut words: Vec<&str> = raw.split_whitespace().collect();
@@ -228,7 +259,9 @@ pub fn extract_with_rules(message: &str) -> Criteria {
         let clause = before.rsplit([',', '.', ';']).next().unwrap_or(before);
         let after = text[end..].trim_start();
         let is_walk = ["march", "pied"].iter().any(|w| clause.contains(w))
-            || ["de march", "a pied", "de pied"].iter().any(|w| after.starts_with(w));
+            || ["de march", "a pied", "de pied", "de la gare", "de gare", "depuis la gare"]
+                .iter()
+                .any(|w| after.starts_with(w));
         if is_walk {
             c.max_walk_minutes.get_or_insert(minutes);
         } else {
@@ -269,6 +302,10 @@ pub fn extract_with_rules(message: &str) -> Criteria {
     let place = RE_PLACE.captures(message).and_then(|cap| cap.get(1));
     if let Some(m) = place {
         c.place = Some(clean_place_name(m.as_str()));
+    }
+    // « la gare de grenoble » : désigne explicitement une gare, même écrite en minuscules
+    if let Some(name) = station_mention(&text) {
+        c.place = Some(name);
     }
     let origin = RE_ORIGIN
         .captures_iter(message)
@@ -346,6 +383,23 @@ mod tests {
         // "moins de 1h30 de Grenoble" : Grenoble est l'origine, pas une destination
         let c = extract_with_rules("Une sortie nature à moins de 1h30 de Grenoble");
         assert_eq!(c.place, None);
+    }
+
+    #[test]
+    fn minutes_de_la_gare_est_de_la_marche() {
+        let c = extract_with_rules("je cherche activité nature a 5 minutes de la gare de grenoble");
+        assert_eq!(c.max_walk_minutes, Some(5));
+        assert_eq!(c.max_travel_minutes, None);
+        assert_eq!(c.place.as_deref(), Some("Grenoble"));
+        assert!(c.themes.contains(&"nature".to_string()));
+
+        let c = extract_with_rules("Que faire près de la gare de saint-marcellin avec des enfants ?");
+        assert_eq!(c.place.as_deref(), Some("Saint-Marcellin"));
+
+        // origine et lieu identiques : on cherche autour de la gare de départ
+        let c = extract_with_rules("Une balade autour de la gare de Grenoble depuis Grenoble");
+        assert_eq!(c.place.as_deref(), Some("Grenoble"));
+        assert_eq!(c.origin.as_deref(), Some("Grenoble"));
     }
 
     #[test]

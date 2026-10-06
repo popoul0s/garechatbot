@@ -111,6 +111,17 @@
     }
   },
   {
+    "id": "autour-gare-depart",
+    "message": "je cherche activité nature a 5 minutes de la gare de grenoble",
+    "expected": {
+      "place": "Grenoble",
+      "max_walk_minutes": 5,
+      "themes": [
+        "nature"
+      ]
+    }
+  },
+  {
     "id": "relance",
     "message": "Une sortie nature à moins de 1h30 de Grenoble.",
     "followup": "Et si je préfère finalement quelque chose de culturel ?",

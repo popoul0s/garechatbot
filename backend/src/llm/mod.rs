@@ -32,7 +32,9 @@ Règles :
 - Ne renseigne que ce qui est exprimé dans le DERNIER message ; mets null ou [] sinon.
 - Les critères précédents de la conversation sont fournis pour comprendre les références implicites
   ("et si plutôt culturel ?" -> themes = ["culture"], le reste null).
-- N'invente aucune ville ni durée."#;
+- N'invente aucune ville ni durée.
+- « à 10 minutes de la gare » = marche (max_walk_minutes), pas du train.
+- « la gare de X », « autour de X », « à X » : X est le lieu (place), même s'il s'agit aussi de la ville de départ."#;
 
 const ANSWER_PROMPT: &str = r#"Tu es l'assistant d'une plateforme de tourisme en train en Auvergne-Rhône-Alpes.
 On te fournit la demande de l'utilisateur et des recommandations DÉJÀ sélectionnées et classées par le système.
