@@ -264,9 +264,6 @@ impl Timetable {
             });
         }
         let (dep, arr) = (legs.first()?.dep_min, arrival[&to]);
-        if arr - dep > MAX_JOURNEY_MIN {
-            return None;
-        }
         Some(Journey {
             departure: hhmm(dep),
             arrival: hhmm(arr),
@@ -281,14 +278,16 @@ impl Timetable {
     pub fn last_journey(&self, from: i64, to: i64, after: i32) -> Option<Journey> {
         let mut last = None;
         let mut start = after;
-        // on enchaîne les départs successifs jusqu'à épuisement (borne de sécurité : 500 trajets)
-        for _ in 0..500 {
-            match self.earliest(from, to, start) {
-                Some(j) if j.dep_min < after + 24 * 60 => {
-                    start = j.dep_min + 1;
-                    last = Some(j);
-                }
-                _ => break,
+        // On enchaîne les départs successifs jusqu'à ce qu'aucun train n'atteigne plus la destination.
+        // Un trajet trop long (longue attente en correspondance) est ignoré mais ne stoppe pas la recherche.
+        for _ in 0..1000 {
+            let Some(j) = self.earliest(from, to, start) else { break };
+            if j.dep_min >= after + 24 * 60 {
+                break;
+            }
+            start = j.dep_min + 1;
+            if j.duration_min <= MAX_JOURNEY_MIN {
+                last = Some(j);
             }
         }
         last
@@ -299,9 +298,14 @@ impl Timetable {
     pub fn next_journeys(&self, from: i64, to: i64, after: i32, limit: usize) -> Vec<Journey> {
         let mut out: Vec<(i32, Journey)> = Vec::new();
         let mut start = after;
-        for _ in 0..limit * 4 {
+        for _ in 0..limit * 20 {
             let Some(j) = self.earliest(from, to, start) else { break };
             let dep = j.dep_min;
+            if j.duration_min > MAX_JOURNEY_MIN {
+                // trajet aberrant (attente de plusieurs heures) : on cherche le départ suivant
+                start = dep + 1;
+                continue;
+            }
             if let Some(last) = out.last() {
                 if last.1.arrival == j.arrival {
                     out.pop(); // partir plus tard pour arriver à la même heure est préférable
@@ -403,6 +407,25 @@ mod tests {
         let j = tt().last_journey(1, 3, 7 * 60).unwrap();
         assert_eq!(j.departure, "10:00");
         assert!(tt().last_journey(1, 3, 11 * 60).is_none());
+    }
+
+    #[test]
+    fn un_trajet_trop_long_n_arrete_pas_la_recherche() {
+        // A->B 06:00, puis B->C seulement à 12:00 (6h30 au total, trop long) ; direct A->C à 18:00
+        let conns = vec![
+            Conn { dep: 360, arr: 390, from: 1, to: 2, trip: 0 },
+            Conn { dep: 720, arr: 750, from: 2, to: 3, trip: 1 },
+            Conn { dep: 1080, arr: 1140, from: 1, to: 3, trip: 2 },
+        ];
+        let trips = (0..3).map(|_| TripInfo::default()).collect();
+        let stations = [(1, "A"), (2, "B"), (3, "C")]
+            .into_iter()
+            .map(|(id, n)| (id, StationInfo { name: n.into(), lon: 0.0, lat: 0.0 }))
+            .collect();
+        let t = Timetable::new(conns, trips, stations);
+        assert_eq!(t.last_journey(1, 3, 5 * 60).unwrap().departure, "18:00");
+        let deps: Vec<_> = t.next_journeys(1, 3, 5 * 60, 4).into_iter().map(|j| j.departure).collect();
+        assert_eq!(deps, vec!["18:00"]);
     }
 
     #[test]
