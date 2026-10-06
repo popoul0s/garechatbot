@@ -277,6 +277,23 @@ impl Timetable {
         })
     }
 
+    /// Dernier trajet possible de la journée type partant après `after` (le « dernier train »).
+    pub fn last_journey(&self, from: i64, to: i64, after: i32) -> Option<Journey> {
+        let mut last = None;
+        let mut start = after;
+        // on enchaîne les départs successifs jusqu'à épuisement (borne de sécurité : 500 trajets)
+        for _ in 0..500 {
+            match self.earliest(from, to, start) {
+                Some(j) if j.dep_min < after + 24 * 60 => {
+                    start = j.dep_min + 1;
+                    last = Some(j);
+                }
+                _ => break,
+            }
+        }
+        last
+    }
+
     /// Les `limit` prochains trajets partant après `after` (minutes depuis minuit).
     /// Un trajet qui part plus tôt mais arrive en même temps qu'un suivant est écarté.
     pub fn next_journeys(&self, from: i64, to: i64, after: i32, limit: usize) -> Vec<Journey> {
@@ -378,6 +395,14 @@ mod tests {
         let j = tt().earliest(1, 3, 2 * 60).unwrap();
         assert_eq!(j.departure, "08:00");
         assert_eq!(j.duration_min, 70, "la durée se compte depuis le départ du train, pas depuis l'heure demandée");
+    }
+
+    #[test]
+    fn dernier_train_de_la_journee() {
+        // A -> C : départs 08:00 et 10:00 ; le dernier est celui de 10:00, quelle que soit la limite d'affichage
+        let j = tt().last_journey(1, 3, 7 * 60).unwrap();
+        assert_eq!(j.departure, "10:00");
+        assert!(tt().last_journey(1, 3, 11 * 60).is_none());
     }
 
     #[test]

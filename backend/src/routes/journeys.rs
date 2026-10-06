@@ -15,6 +15,8 @@ pub struct Params {
     /// "HH:MM" : partir après cette heure (08:00 par défaut)
     after: Option<String>,
     limit: Option<usize>,
+    /// true : renvoie seulement le dernier trajet possible de la journée après `after`
+    last: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -52,6 +54,10 @@ pub async fn journeys(State(st): State<AppState>, Query(p): Query<Params>) -> Ap
             service_date.as_deref().unwrap_or("date inconnue")
         )
     };
-    let journeys = tt.next_journeys(p.from_id, p.to_id, after, p.limit.unwrap_or(4).min(10));
+    let journeys = if p.last.unwrap_or(false) {
+        tt.last_journey(p.from_id, p.to_id, after).into_iter().collect()
+    } else {
+        tt.next_journeys(p.from_id, p.to_id, after, p.limit.unwrap_or(4).min(10))
+    };
     Ok(Json(Response { journeys, service_date, note }))
 }

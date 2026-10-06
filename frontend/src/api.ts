@@ -157,6 +157,9 @@ export interface JourneysResponse {
 export const api = {
   journeys: (fromId: number, toId: number, after: string, limit = 4) =>
     get<JourneysResponse>(`/api/journeys?from_id=${fromId}&to_id=${toId}&after=${after}&limit=${limit}`),
+  /** Dernier trajet de la journée partant après `after`. */
+  lastJourney: (fromId: number, toId: number, after: string) =>
+    get<JourneysResponse>(`/api/journeys?from_id=${fromId}&to_id=${toId}&after=${after}&last=true`),
   origins: () => get<Station[]>("/api/origins"),
   search: (criteria: Criteria) => post<SearchOutcome>("/api/search", criteria),
   searchStations: (q: string) => get<Station[]>(`/api/stations?q=${encodeURIComponent(q)}`),

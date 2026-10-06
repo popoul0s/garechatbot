@@ -46,8 +46,8 @@ export default function Journeys({ originId, originName, stationId, stationName,
           const t = Math.min(h * 60 + m + 60, 23 * 60 + 59);
           const back = `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
           api
-            .journeys(stationId, originId, back, 10)
-            .then((r) => setLastReturn({ after: back, departure: r.journeys.at(-1)?.departure ?? null }))
+            .lastJourney(stationId, originId, back)
+            .then((r) => setLastReturn({ after: back, departure: r.journeys[0]?.departure ?? null }))
             .catch(() => setLastReturn(null));
         }
       })
@@ -55,10 +55,20 @@ export default function Journeys({ originId, originName, stationId, stationName,
       .finally(() => setLoading(false));
   }, [originId, stationId, dir, after]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // dernier train de la journée (onglet Retour), calculé par le serveur
+  const [lastOfDay, setLastOfDay] = useState<string | null>(null);
+  useEffect(() => {
+    setLastOfDay(null);
+    if (dir !== "retour" || originId == null || originId === stationId) return;
+    api
+      .lastJourney(stationId, originId, "05:00")
+      .then((r) => setLastOfDay(r.journeys[0]?.departure ?? null))
+      .catch(() => setLastOfDay(null));
+  }, [dir, originId, stationId]);
+
   if (originId == null || originId === stationId) return null;
   const [fromName, toName] = dir === "aller" ? [originName, stationName] : [stationName, originName];
   const journeys = data?.journeys ?? [];
-  const last = dir === "retour" && journeys.length > 0 && journeys.length < 4 ? journeys[journeys.length - 1] : null;
 
   return (
     <section className="journeys" aria-label="Horaires des trains">
@@ -134,7 +144,9 @@ export default function Journeys({ originId, originName, stationId, stationName,
           );
         })}
       </ul>
-      {last && <p className="muted small">Dernier train retour de la journée : {last.departure}.</p>}
+      {dir === "retour" && lastOfDay && (
+        <p className="muted small">Dernier train retour de la journée : {lastOfDay}.</p>
+      )}
       {dir === "aller" && lastReturn && (
         <p className={lastReturn.departure ? "return-ok" : "note"}>
           {lastReturn.departure
