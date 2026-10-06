@@ -65,7 +65,8 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
             return Ok(outcome);
         }
     };
-    if around.is_none() && !db::has_travel_times(&state.db, origin_id).await? {
+    // les temps de trajet pré-calculés ne servent que pour une recherche « partout » (sans gare ni lieu imposés)
+    if around.is_none() && criteria.place.is_none() && !db::has_travel_times(&state.db, origin_id).await? {
         outcome.notes.push(format!(
             "Les temps de trajet depuis {origin_name} n'ont pas encore été calculés : je ne peux pas proposer de destination."
         ));

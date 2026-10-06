@@ -7,7 +7,11 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::criteria::{extract_with_rules, is_follow_up, Criteria};
+use crate::db;
+use crate::domain::criteria::{extract_with_rules, fold, is_follow_up, Criteria};
+
+/// Noms de gares qui sont aussi des mots courants : jamais pris pour un lieu cité.
+const COMMON_WORDS: &[&str] = &["rives", "lac", "bois", "pont", "vif", "port", "gare"];
 use crate::error::{AppError, AppResult};
 use crate::llm::{self, Answer, Usage};
 use crate::service::{self, SearchOutcome};
@@ -107,6 +111,25 @@ pub async fn chat(State(st): State<AppState>, Json(req): Json<ChatRequest>) -> A
             extract_with_rules(message)
         }
     };
+    // Complément : noms de gares cités sans majuscule ni accent (« a aix les bains », « depuis lyon »).
+    let mut extracted = extracted;
+    if extracted.place.is_none() || extracted.origin.is_none() {
+        let folded = fold(message).replace(|c: char| !c.is_alphanumeric(), " ");
+        let folded = format!(" {} ", folded.split_whitespace().collect::<Vec<_>>().join(" "));
+        for (name, key) in db::stations_in_text(&st.db, message).await? {
+            if COMMON_WORDS.contains(&key.as_str()) {
+                continue;
+            }
+            let Some(pos) = folded.find(&format!(" {key} ")) else { continue };
+            let before = &folded[..=pos];
+            let is_origin = ["depuis ", "depart de ", "partant de ", "part de "].iter().any(|w| before.ends_with(w));
+            if is_origin && extracted.origin.is_none() {
+                extracted.origin = Some(name);
+            } else if !is_origin && extracted.place.is_none() {
+                extracted.place = Some(name);
+            }
+        }
+    }
     timings.extraction_ms = t.elapsed().as_millis();
 
     // 2. Fusion avec le contexte de session (seulement pour une relance) ; la gare sélectionnée fait foi.

@@ -114,6 +114,25 @@ pub async fn has_travel_times(db: &PgPool, origin_id: i64) -> sqlx::Result<bool>
         .await
 }
 
+/// Noms de gares cités dans un texte libre, quelle que soit l'écriture (« a aix les bains » ->
+/// « Aix-les-Bains - Le Revard »). Comparaison sur le nom de base (avant « - »), sans accents,
+/// casse ni ponctuation. Renvoie (nom de base, clé normalisée), plus long d'abord.
+pub async fn stations_in_text(db: &PgPool, text: &str) -> sqlx::Result<Vec<(String, String)>> {
+    sqlx::query_as(
+        r#"WITH m AS (SELECT ' ' || regexp_replace(unaccent(lower($1)), '[^a-z0-9]+', ' ', 'g') || ' ' AS t),
+                n AS (SELECT DISTINCT split_part(name, ' - ', 1) AS base,
+                             trim(regexp_replace(unaccent(lower(split_part(name, ' - ', 1))), '[^a-z0-9]+', ' ', 'g')) AS key
+                      FROM stations)
+           SELECT n.base, n.key
+           FROM n, m
+           WHERE length(n.key) >= 4 AND position(' ' || n.key || ' ' IN m.t) > 0
+           ORDER BY length(n.key) DESC"#,
+    )
+    .bind(text)
+    .fetch_all(db)
+    .await
+}
+
 /// Gare dont le nom ou la commune correspond exactement au lieu demandé.
 pub async fn station_named(db: &PgPool, place: &str) -> sqlx::Result<Option<Station>> {
     sqlx::query_as::<_, Station>(&format!(
