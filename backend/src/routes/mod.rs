@@ -1,5 +1,6 @@
 mod assistant;
 mod map;
+mod journeys;
 mod stations;
 
 use axum::routing::{get, post};
@@ -17,6 +18,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/stations/reachable", get(stations::reachable))
         .route("/api/stations/{id}", get(stations::detail))
         .route("/api/pois", get(stations::pois))
+        .route("/api/journeys", get(journeys::journeys))
         .route("/api/map/stations", get(map::stations))
         .route("/api/map/lines", get(map::lines))
         .route("/api/map/pois", get(map::pois))

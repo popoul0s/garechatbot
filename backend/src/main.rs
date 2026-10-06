@@ -7,6 +7,7 @@ mod llm;
 mod routes;
 mod service;
 mod state;
+mod timetable;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -49,11 +50,19 @@ async fn main() -> anyhow::Result<()> {
         None => tracing::warn!("aucun LLM configuré : extraction par règles et réponses par gabarit"),
     }
 
+    let timetable = timetable::Timetable::load(&db).await?;
+    if timetable.is_empty() {
+        tracing::warn!("aucun horaire détaillé : relancer l'ingestion GTFS pour activer les itinéraires");
+    } else {
+        tracing::info!(journee_type = ?timetable.service_date, "horaires détaillés chargés");
+    }
+
     let state = AppState {
         db,
         cfg: Arc::new(cfg.clone()),
         llm,
         geo: geo::GeoClient::new(cfg.geo_api_url.clone())?,
+        timetable: Arc::new(timetable),
         sessions: Arc::new(Mutex::new(HashMap::new())),
     };
     let app = routes::router(state)

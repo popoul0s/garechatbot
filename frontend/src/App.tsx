@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Answer,
   api,
+  Journey,
   Criteria,
   EMPTY_CRITERIA,
   PoiNearStation,
@@ -50,6 +51,7 @@ export default function App() {
   const [askAround, setAskAround] = useState<StationSummary | null>(null);
   const [visiblePois, setVisiblePois] = useState<PoiNearStation[]>([]);
   const [focusedPoi, setFocusedPoi] = useState<number | null>(null);
+  const [journey, setJourney] = useState<Journey | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -120,6 +122,7 @@ export default function App() {
   // Carte ou liste -> fiche de la gare
   const openStation = useCallback((id: number) => {
     setFocusedPoi(null);
+    setJourney(null);
     api
       .station(id)
       .then((d) => {
@@ -154,6 +157,10 @@ export default function App() {
   };
 
   const results = outcome?.recommendations ?? [];
+  const originId =
+    outcome?.origin?.id ??
+    (stationsGeo?.features.find((f) => f.properties?.is_origin)?.properties?.id as number | undefined) ??
+    null;
   const mapMode: MapMode = detail ? "detail" : results.length > 0 ? "results" : "overview";
 
   return (
@@ -173,11 +180,17 @@ export default function App() {
               pois={detail.pois}
               travel={travelFor(detail.station.id)}
               originName={criteria.origin}
+              originId={originId}
+              journey={journey}
+              onSelectJourney={setJourney}
               wanted={outcome ? [...criteria.themes, ...(criteria.audience === "famille" ? ["famille"] : [])] : []}
               keywords={outcome ? criteria.keywords : []}
               canGoBack={!!outcome}
               focusedPoiId={focusedPoi}
-              onBack={() => setDetail(null)}
+              onBack={() => {
+                setDetail(null);
+                setJourney(null);
+              }}
               onAsk={askAboutStation}
               onPoiClick={(id) => {
                 setFocusedPoi(id);
@@ -257,6 +270,7 @@ export default function App() {
             detailStation={detail?.station ?? null}
             detailPois={detail ? visiblePois : []}
             focusedPoiId={focusedPoi}
+            journey={detail ? journey : null}
             onSelectStation={openStation}
             onSelectPoi={setFocusedPoi}
             visible={mobileTab === "map" || !isMobile()}

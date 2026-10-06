@@ -118,7 +118,43 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   return r.json();
 }
 
+export interface JourneyStop {
+  station_id: number;
+  name: string;
+  lon: number;
+  lat: number;
+}
+
+export interface Leg {
+  from: JourneyStop;
+  to: JourneyStop;
+  departure: string;
+  arrival: string;
+  duration_min: number;
+  wait_before_min: number;
+  route_name: string | null;
+  headsign: string | null;
+  number: string | null;
+  stops: JourneyStop[];
+}
+
+export interface Journey {
+  departure: string;
+  arrival: string;
+  duration_min: number;
+  changes: number;
+  legs: Leg[];
+}
+
+export interface JourneysResponse {
+  journeys: Journey[];
+  service_date: string | null;
+  note: string;
+}
+
 export const api = {
+  journeys: (fromId: number, toId: number, after: string, limit = 4) =>
+    get<JourneysResponse>(`/api/journeys?from_id=${fromId}&to_id=${toId}&after=${after}&limit=${limit}`),
   origins: () => get<Station[]>("/api/origins"),
   search: (criteria: Criteria) => post<SearchOutcome>("/api/search", criteria),
   searchStations: (q: string) => get<Station[]>(`/api/stations?q=${encodeURIComponent(q)}`),

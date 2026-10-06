@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { categoryOf, CATEGORIES, formatMinutes, PoiNearStation, Station, TAG_LABELS } from "../api";
+import { categoryOf, CATEGORIES, formatMinutes, Journey, PoiNearStation, Station, TAG_LABELS } from "../api";
+import Journeys from "./Journeys";
 
 interface Props {
   station: Station;
   pois: PoiNearStation[];
   travel: { minutes: number | null; nb_changes: number | null } | null;
   originName: string | null;
+  originId: number | null;
+  journey: Journey | null;
+  onSelectJourney: (j: Journey | null) => void;
   /** Thèmes et mots-clés de la recherche en cours : les lieux correspondants passent en premier. */
   wanted: string[];
   keywords: string[];
@@ -117,6 +121,15 @@ export default function StationDetail(props: Props) {
             : `Aucun lieu référencé ici ne correspond à « ${searchLabel} ». Voici ce qu'il y a autour de la gare.`}
         </p>
       )}
+
+      <Journeys
+        originId={props.originId}
+        originName={originName}
+        stationId={station.id}
+        stationName={station.name}
+        selected={props.journey}
+        onSelect={props.onSelectJourney}
+      />
 
       <button className="primary wide" onClick={props.onAsk}>
         Poser une question sur cette gare

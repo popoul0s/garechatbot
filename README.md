@@ -52,6 +52,8 @@ Le détail du score est renvoyé par l'API et affiché sous chaque recommandatio
 
 **Sans LLM** (`LLM_BASE_URL` vide), l'application fonctionne entièrement : l'extraction se fait par règles et la réponse est construite à partir des faits. Aucune clé payante n'est donc indispensable.
 
+**Itinéraires détaillés** (`backend/src/timetable.rs`) : l'ingestion GTFS enregistre les horaires de la journée type (table `connections`, un enregistrement par trajet entre deux gares successives d'un train). L'API les charge en mémoire au démarrage et calcule à la demande, avec le Connection Scan Algorithm, les prochains trains aller et retour (correspondance minimale de 5 min), le train à prendre (ligne, numéro, direction), les attentes en correspondance et le dernier retour possible dans la journée. Ce sont des horaires théoriques : l'interface le rappelle.
+
 **Si les données ne suffisent pas** : l'application assouplit une fois les contraintes (+30 min de train, +15 min de marche) et le signale. Sinon, elle répond qu'aucune destination des données ne correspond. Une ville d'origine inconnue ou sans temps de trajet calculés est signalée explicitement.
 
 ### Pourquoi ces choix
@@ -126,6 +128,7 @@ docker compose exec ollama ollama pull mistral
 | GET | `/api/stations/{id}?max_walk=30` | Gare + POI à proximité |
 | GET | `/api/stations/reachable?from=Grenoble&max_minutes=90` | Gares accessibles depuis une origine |
 | GET | `/api/pois?station_id=&max_walk=&tag=` | POI filtrés par catégorie et distance |
+| GET | `/api/journeys?from_id=&to_id=&after=HH:MM&limit=` | Prochains trains entre deux gares : horaires, numéro, direction, correspondances, gares desservies (aller ou retour) |
 | GET | `/api/map/stations?origin=Grenoble` | GeoJSON des gares (avec temps de trajet) |
 | GET | `/api/map/lines` | GeoJSON des lignes |
 | GET | `/api/map/pois?bbox=&tag=` | GeoJSON des POI |

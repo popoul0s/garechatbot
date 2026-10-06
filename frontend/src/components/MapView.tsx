@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
-import { categoryOf, CATEGORIES, formatMinutes, PoiNearStation, Recommendation, Station } from "../api";
+import { categoryOf, CATEGORIES, formatMinutes, Journey, PoiNearStation, Recommendation, Station } from "../api";
 
 /**
  * La carte n'affiche que ce qui sert à l'étape en cours :
@@ -20,6 +20,8 @@ interface Props {
   detailStation: Station | null;
   detailPois: PoiNearStation[];
   focusedPoiId: number | null;
+  /** Trajet en train sélectionné dans la fiche gare : tracé sur la carte. */
+  journey: Journey | null;
   onSelectStation: (id: number) => void;
   onSelectPoi: (id: number) => void;
   visible: boolean;
@@ -114,6 +116,29 @@ export default function MapView(props: Props) {
     m.on("load", () => {
       m.addSource("lines", { type: "geojson", data: EMPTY });
       m.addSource("stations", { type: "geojson", data: EMPTY });
+      m.addSource("journey", { type: "geojson", data: EMPTY });
+      m.addSource("walk", { type: "geojson", data: EMPTY });
+      m.addLayer({
+        id: "journey-casing",
+        type: "line",
+        source: "journey",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#fafaf9", "line-width": 7 },
+      });
+      m.addLayer({
+        id: "journey",
+        type: "line",
+        source: "journey",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#0f766e", "line-width": 4 },
+      });
+      m.addLayer({
+        id: "walk",
+        type: "line",
+        source: "walk",
+        layout: { "line-cap": "round" },
+        paint: { "line-color": "#1f2937", "line-width": 3, "line-dasharray": [1, 2] },
+      });
       m.addLayer({
         id: "lines",
         type: "line",
@@ -212,6 +237,31 @@ export default function MapView(props: Props) {
       );
     }
 
+    // trajet en train choisi : tracé gare par gare, correspondances signalées
+    const j = mode === "detail" ? props.journey : null;
+    (m.getSource("journey") as GeoJSONSource).setData(
+      j
+        ? {
+            type: "FeatureCollection",
+            features: j.legs.map((l) => ({
+              type: "Feature",
+              geometry: { type: "LineString", coordinates: l.stops.map((s) => [s.lon, s.lat]) },
+              properties: {},
+            })),
+          }
+        : EMPTY,
+    );
+    if (j) {
+      const first = j.legs[0].from;
+      addMarker(el("origin-marker", `${escapeHtml(j.departure)} · ${escapeHtml(first.name)}`), [first.lon, first.lat]);
+      j.legs.slice(1).forEach((l) =>
+        addMarker(
+          el("transfer-marker", `Correspondance · ${escapeHtml(l.from.name)} (${l.wait_before_min} min)`),
+          [l.from.lon, l.from.lat],
+        ),
+      );
+    }
+
     if (mode === "detail" && detailStation) {
       // étiquette au-dessus de la gare (ancre en bas) pour ne pas masquer les lieux voisins
       addMarker(el("station-marker", `🚆 ${escapeHtml(detailStation.name)}`), [detailStation.lon, detailStation.lat], "bottom");
@@ -228,9 +278,14 @@ export default function MapView(props: Props) {
           new maplibregl.Marker({ element: div }).setLngLat([p.lon, p.lat]).addTo(m),
         );
       });
-      fit(m, [[detailStation.lon, detailStation.lat], ...detailPois.map((p) => [p.lon, p.lat] as [number, number])], 15);
+      const journeyPts = j ? j.legs.flatMap((l) => l.stops.map((s) => [s.lon, s.lat] as [number, number])) : [];
+      fit(
+        m,
+        [[detailStation.lon, detailStation.lat], ...detailPois.map((p) => [p.lon, p.lat] as [number, number]), ...journeyPts],
+        15,
+      );
     }
-  }, [ready, props.mode, props.stations, props.lines, props.results, props.detailStation, props.detailPois]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, props.mode, props.stations, props.lines, props.results, props.detailStation, props.detailPois, props.journey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lieu sélectionné (depuis la liste ou la carte) : on le montre et on affiche sa fiche
   useEffect(() => {
@@ -238,6 +293,17 @@ export default function MapView(props: Props) {
     if (!m || !ready) return;
     poiMarkers.current.forEach((mk, id) => mk.getElement().classList.toggle("active", id === props.focusedPoiId));
     const p = props.detailPois.find((x) => x.id === props.focusedPoiId);
+    const st = props.detailStation;
+    // chemin à pied gare -> lieu (ligne droite indicative ; le temps affiché inclut un détour de 30 %)
+    (m.getSource("walk") as GeoJSONSource).setData(
+      p && st
+        ? {
+            type: "Feature",
+            geometry: { type: "LineString", coordinates: [[st.lon, st.lat], [p.lon, p.lat]] },
+            properties: {},
+          }
+        : EMPTY,
+    );
     if (!p) return;
     popup.current?.remove();
     popup.current = new maplibregl.Popup({ offset: 16, maxWidth: "260px" })

@@ -692,6 +692,128 @@ main {
   border-bottom: none;
   border-top-color: #0f766e;
 }
+.transfer-marker {
+  background: #b45309;
+  color: #fafaf9;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* ---------- Trains (fiche gare) ---------- */
+.journeys {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--sunken);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.journeys-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.journeys h3 {
+  margin: 0;
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.seg button {
+  border: none;
+  background: var(--surface);
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+.seg button.on {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.after {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+.after select {
+  font: inherit;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+.journey-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.journey {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  text-align: left;
+}
+.journey.active {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.legs {
+  list-style: none;
+  margin: 6px 0 4px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+.legs p {
+  margin: 0;
+}
+.leg-times {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 2px !important;
+}
+.transfer {
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  margin-bottom: 6px !important;
+}
+.return-ok {
+  margin: 0;
+  font-size: 0.85rem;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+.disclaimer {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
 .dest-marker {
   display: flex;
   align-items: center;

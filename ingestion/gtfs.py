@@ -251,3 +251,44 @@ def run(source: str, origins: list[str]) -> None:
                     )
                     n += 1
             print(f"  temps de trajet depuis {name} : {n} gares atteignables en moins de {MAX_TRAVEL_MIN} min")
+
+        store_timetable(cur, t, conns, trip_route, ids, date)
+
+
+def store_timetable(cur, t: dict[str, pd.DataFrame], conns: list[tuple], trip_route: dict[str, str],
+                    ids: dict[str, int], date: str) -> None:
+    """Horaires de la journée type, pour le calcul d'itinéraires détaillés par l'API (quel train, à quelle heure)."""
+    cur.execute(
+        """CREATE TABLE IF NOT EXISTS gtfs_trips (
+               trip_id TEXT PRIMARY KEY, route_name TEXT, headsign TEXT, number TEXT);
+           CREATE TABLE IF NOT EXISTS connections (
+               dep_min INTEGER NOT NULL, arr_min INTEGER NOT NULL,
+               from_station BIGINT NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+               to_station BIGINT NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+               trip_id TEXT NOT NULL);
+           CREATE TABLE IF NOT EXISTS gtfs_meta (key TEXT PRIMARY KEY, value TEXT);
+           TRUNCATE connections, gtfs_trips;"""
+    )
+    routes = t["routes"].set_index("route_id")
+    trips = t["trips"]
+    trips = trips[trips["trip_id"].isin(trip_route.keys())]
+    with cur.copy("COPY gtfs_trips (trip_id, route_name, headsign, number) FROM STDIN") as cp:
+        for tr in trips.itertuples():
+            r = routes.loc[tr.route_id] if tr.route_id in routes.index else None
+            route_name = ""
+            if r is not None:
+                route_name = (r.get("route_short_name") or r.get("route_long_name") or "").strip()
+            headsign = (getattr(tr, "trip_headsign", "") or "").strip()
+            number = (getattr(tr, "trip_short_name", "") or "").strip()
+            cp.write_row((tr.trip_id, route_name or None, headsign or None, number or None))
+    n = 0
+    with cur.copy("COPY connections (dep_min, arr_min, from_station, to_station, trip_id) FROM STDIN") as cp:
+        for dep, arr, u, v, trip in conns:
+            if u in ids and v in ids:
+                cp.write_row((dep, arr, ids[u], ids[v], trip))
+                n += 1
+    cur.execute(
+        "INSERT INTO gtfs_meta VALUES ('service_date', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        (date,),
+    )
+    print(f"  horaires détaillés : {n} connexions et {len(trips)} trains enregistrés (journée type {date})")

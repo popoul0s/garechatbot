@@ -75,3 +75,19 @@ CREATE TABLE IF NOT EXISTS station_poi (
     PRIMARY KEY (station_id, poi_id)
 );
 CREATE INDEX IF NOT EXISTS station_poi_poi_idx ON station_poi (poi_id);
+
+-- Horaires théoriques de la journée type (GTFS), pour les itinéraires détaillés calculés par l'API
+CREATE TABLE IF NOT EXISTS gtfs_trips (
+    trip_id     TEXT PRIMARY KEY,
+    route_name  TEXT,
+    headsign    TEXT,                          -- direction affichée
+    number      TEXT                           -- numéro de train
+);
+CREATE TABLE IF NOT EXISTS connections (
+    dep_min      INTEGER NOT NULL,             -- minutes depuis minuit (peut dépasser 1440)
+    arr_min      INTEGER NOT NULL,
+    from_station BIGINT NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+    to_station   BIGINT NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+    trip_id      TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS gtfs_meta (key TEXT PRIMARY KEY, value TEXT);
