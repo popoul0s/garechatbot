@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { categoryOf, CATEGORIES, formatMinutes, Journey, PoiNearStation, Station, TAG_LABELS } from "../api";
+import { categoryOf, CATEGORIES, formatMinutes, Journey, PoiNearStation, sourceLabel, Station, TAG_LABELS } from "../api";
 import Journeys from "./Journeys";
 
 interface Props {
@@ -39,6 +39,9 @@ const fold = (s: string) =>
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
 
+/** Un lieu sans nom (aire de jeux, point de vue anonyme) n'est listé que s'il répond à une envie précise. */
+const genericWanted = (p: PoiNearStation, wanted: string[]) => wanted.some((t) => t !== "nature" && p.tags.includes(t));
+
 function buildEntries(pois: PoiNearStation[], wanted: string[], keywords: string[]): Entry[] {
   const kws = keywords.map(fold);
   const groups = new Map<string, Entry>();
@@ -75,7 +78,20 @@ export default function StationDetail(props: Props) {
   const [limit, setLimit] = useState(PAGE);
   const itemRefs = useRef(new Map<number, HTMLLIElement>());
 
-  const entries = useMemo(() => buildEntries(pois, wanted, keywords), [pois, wanted.join(), keywords.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [showGeneric, setShowGeneric] = useState(false);
+  const hiddenGeneric = useMemo(
+    () => (showGeneric ? 0 : pois.filter((p) => p.generic && !genericWanted(p, wanted)).length),
+    [pois, wanted.join(), showGeneric], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const entries = useMemo(
+    () =>
+      buildEntries(
+        pois.filter((p) => showGeneric || !p.generic || genericWanted(p, wanted)),
+        wanted,
+        keywords,
+      ),
+    [pois, wanted.join(), keywords.join(), showGeneric], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const counts = useMemo(() => {
     const m = new Map<string, number>();
     entries.forEach((e) => m.set(categoryOf(e.poi.tags).key, (m.get(categoryOf(e.poi.tags).key) ?? 0) + 1));
@@ -89,6 +105,7 @@ export default function StationDetail(props: Props) {
   useEffect(() => {
     setCat(null);
     setLimit(PAGE);
+    setShowGeneric(false);
   }, [station.id]);
   useEffect(() => {
     props.onVisibleChange(shown.map((e) => e.poi));
@@ -192,6 +209,7 @@ export default function StationDetail(props: Props) {
                     {p.interest >= 1 && <span className="star">★ Site remarquable · </span>}
                     {c.label}
                     {hasSearch && e.matches && <span className="match"> · correspond à votre recherche</span>}
+                    <span className="source"> · {sourceLabel(p.source)}</span>
                   </span>
                   {focusedPoiId === p.id && p.description && <span className="small">{p.description.slice(0, 220)}</span>}
                 </span>
@@ -206,6 +224,15 @@ export default function StationDetail(props: Props) {
           Voir {Math.min(PAGE, filtered.length - shown.length)} lieux de plus
         </button>
       )}
+      {hiddenGeneric > 0 && (
+        <button className="more" onClick={() => setShowGeneric(true)}>
+          Afficher aussi {hiddenGeneric} lieu{hiddenGeneric > 1 ? "x" : ""} sans nom (aires de jeux, points de vue…)
+        </button>
+      )}
+      <p className="muted small credits">
+        Lieux : © contributeurs OpenStreetMap (ODbL)
+        {pois.some((p) => p.source === "datatourisme") && " · DATAtourisme (offices de tourisme, Etalab 2.0)"}
+      </p>
     </section>
   );
 }

@@ -593,6 +593,13 @@ main {
   color: #b45309;
   font-weight: 600;
 }
+.source {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.credits {
+  margin-top: 12px;
+}
 .match {
   color: var(--accent-strong);
   font-weight: 600;

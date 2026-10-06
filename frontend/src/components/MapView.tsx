@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
-import { categoryOf, CATEGORIES, formatMinutes, Journey, PoiNearStation, Recommendation, Station } from "../api";
+import { categoryOf, CATEGORIES, sourceLabel, formatMinutes, Journey, PoiNearStation, Recommendation, Station } from "../api";
 
 /**
  * La carte n'affiche que ce qui sert à l'étape en cours :
@@ -71,7 +71,8 @@ function poiPopupHtml(p: PoiNearStation): string {
     `<strong>${escapeHtml(p.name)}</strong><br/>` +
     `<span style="color:${cat.color}">${cat.label}</span> · 🚶 ${p.walk_minutes} min de la gare` +
     (p.description ? `<p>${escapeHtml(p.description.slice(0, 200))}</p>` : "") +
-    (p.url ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noreferrer">Site web</a>` : "")
+    (p.url ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noreferrer">Site web</a><br/>` : "") +
+    `<span class="source">Source : ${sourceLabel(p.source)}</span>`
   );
 }
 

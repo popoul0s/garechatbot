@@ -4,6 +4,7 @@ Exemples :
     python run_all.py all --gtfs <url-ou-fichier.zip> --datatourisme <url-ou-archive-ou-dossier>
     python run_all.py gtfs --gtfs data/gtfs.zip --origins "Grenoble,Lyon Part-Dieu,Chambéry - Challes-les-Eaux"
     python run_all.py osm
+    python run_all.py lakes --osm-limit 220
     python run_all.py sncf --inspect
     python run_all.py link
     python run_all.py stats
@@ -40,7 +41,7 @@ def stats() -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Ingestion GareChatBot")
-    p.add_argument("step", choices=["all", "gtfs", "rail", "sncf", "osm", "datatourisme", "link", "stats"])
+    p.add_argument("step", choices=["all", "gtfs", "rail", "sncf", "osm", "lakes", "datatourisme", "link", "stats"])
     p.add_argument("--gtfs", default=DEFAULT_GTFS, help="URL ou chemin du GTFS ferroviaire")
     p.add_argument("--origins", default=DEFAULT_ORIGINS, help="gares d'origine, séparées par des virgules")
     p.add_argument("--datatourisme", help="URL, archive .zip ou dossier du flux DATAtourisme")
@@ -70,6 +71,8 @@ def main() -> None:
                 print(f"  ! enrichissement SNCF en échec : {e}")
     if a.step in ("all", "osm"):
         osm.run(a.osm_limit, a.osm_restart)
+    if a.step == "lakes":
+        osm.run_lakes(a.osm_limit)
     if a.step in ("all", "datatourisme"):
         if a.datatourisme:
             datatourisme.run(a.datatourisme)
@@ -77,7 +80,7 @@ def main() -> None:
             p.error("--datatourisme est requis")
         else:
             print("DATAtourisme : aucun flux fourni (--datatourisme), étape ignorée")
-    if a.step in ("all", "datatourisme", "osm", "link"):
+    if a.step in ("all", "datatourisme", "osm", "lakes", "link"):
         link.run()
     if a.step in ("all", "stats"):
         stats()

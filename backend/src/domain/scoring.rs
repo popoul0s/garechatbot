@@ -92,6 +92,12 @@ fn poi_match(row: &CandidateRow, wanted: &[String], has_keywords: bool) -> f64 {
     (0.7 * tag_part + 0.3 * text_part).max(text_part.min(0.6))
 }
 
+/// Un lieu sans nom n'est retenu que s'il répond à une envie précise : une aire de jeux pour
+/// une sortie en famille, un point de vue pour un panorama. "nature" seul ne suffit pas.
+fn generic_wanted(tags: &[String], wanted: &[String]) -> bool {
+    wanted.iter().any(|t| t != "nature" && tags.contains(t))
+}
+
 pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<Recommendation> {
     let wanted = criteria.wanted_tags();
     let has_keywords = !criteria.keywords.is_empty();
@@ -109,6 +115,7 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
             let first = rows.first()?.clone();
             let mut hits: Vec<PoiHit> = rows
                 .into_iter()
+                .filter(|r| !r.poi.generic || generic_wanted(&r.poi.tags, &wanted))
                 .map(|r| {
                     let m = poi_match(&r, &wanted, has_keywords);
                     // un lac qui correspond vaut plus qu'un square qui correspond
@@ -260,6 +267,7 @@ mod tests {
                 lon: 5.7,
                 lat: 45.2,
                 interest: 1.0,
+                generic: false,
             },
             walk_minutes: walk,
             distance_m: walk * 70,
@@ -366,6 +374,17 @@ mod tests {
         let depart = recos.iter().find(|r| r.station.name == "Départ").expect("la gare de départ est proposée");
         assert_eq!(depart.breakdown.travel, ON_SITE_TRAVEL_SCORE);
         assert!(depart.facts[0].starts_with("Sur place"));
+    }
+
+    #[test]
+    fn un_lieu_sans_nom_n_apparait_que_s_il_est_demande() {
+        let mut rows = vec![row(1, "Ville", 20, 10, &["panorama", "nature"], 5), row(2, "Lac", 30, 20, &["eau", "nature"], 5)];
+        rows[0].poi.generic = true; // "Point de vue" sans nom en centre-ville
+        let balade = Criteria { themes: vec!["nature".into()], ..Default::default() };
+        let recos = rank(rows.clone(), &balade, 5);
+        assert_eq!(recos.iter().map(|r| r.station.name.as_str()).collect::<Vec<_>>(), vec!["Lac"]);
+        let panorama = Criteria { themes: vec!["panorama".into()], ..Default::default() };
+        assert_eq!(rank(rows, &panorama, 5)[0].station.name, "Ville");
     }
 
     #[test]

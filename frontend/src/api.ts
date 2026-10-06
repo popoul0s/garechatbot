@@ -22,7 +22,16 @@ export interface Poi {
   lat: number;
   /** Intérêt touristique calculé par le serveur : 1 = site majeur, 0.35 = square, aire de jeux. */
   interest: number;
+  /** Lieu sans nom propre dans OpenStreetMap ("Aire de jeux", "Point de vue"...). */
+  generic: boolean;
 }
+
+/** Provenance affichée pour chaque lieu : les données sont réelles et traçables. */
+export const SOURCE_LABELS: Record<string, string> = {
+  osm: "OpenStreetMap",
+  datatourisme: "DATAtourisme",
+};
+export const sourceLabel = (s: string) => SOURCE_LABELS[s] ?? s;
 
 export interface PoiNearStation extends Poi {
   walk_minutes: number;

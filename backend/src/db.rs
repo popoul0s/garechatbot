@@ -8,8 +8,12 @@ use crate::domain::models::{CandidateRow, Poi, PoiNearStation, ReachableStation,
 const STATION_COLS: &str = "s.id, s.uic, s.name, s.city, s.lon, s.lat, s.pmr, s.equipments";
 /// `interest` : intérêt touristique du lieu (0..1), dérivé de sa catégorie d'origine.
 /// Un sommet, un lac ou un château valent plus qu'un square ou une aire de jeux.
+/// `generic` : lieu OSM sans nom propre (nom par défaut donné à l'import, voir ingestion/osm.py).
 const POI_COLS: &str = "p.id, p.source, p.name, p.description, p.tags, p.url, p.lon, p.lat,
+    (p.source = 'osm' AND p.name IN ('Aire de jeux', 'Aire de pique-nique', 'Point de vue', 'Coin de pêche')) AS generic,
     (CASE
+        WHEN p.source = 'osm' AND p.name IN ('Aire de jeux', 'Aire de pique-nique', 'Point de vue', 'Coin de pêche')
+             THEN 0.35
         WHEN p.raw_types && ARRAY['natural=peak','natural=waterfall','natural=gorge','natural=cave_entrance',
              'water=lake','tourism=viewpoint','route=hiking','leisure=nature_reserve','leisure=fishing',
              'historic=castle','historic=abbey','historic=fort','historic=archaeological_site',
@@ -260,6 +264,7 @@ pub async fn map_pois(
          WHERE p.lon BETWEEN $1 AND $3 AND p.lat BETWEEN $2 AND $4
            AND ($5::text IS NULL OR $5 = ANY(p.tags))
            AND EXISTS (SELECT 1 FROM station_poi sp WHERE sp.poi_id = p.id)
+           AND NOT (p.source = 'osm' AND p.name IN ('Aire de jeux', 'Aire de pique-nique', 'Point de vue', 'Coin de pêche'))
          LIMIT $6"
     ))
     .bind(min_lon)

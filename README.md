@@ -85,6 +85,7 @@ python run_all.py gtfs --gtfs <URL ou chemin du GTFS TER> --origins "Grenoble"
 python run_all.py rail          # tracé réel des voies (SNCF Open Data, ou --rail-osm)
 python run_all.py sncf
 python run_all.py osm
+python run_all.py lakes         # rives des lacs (si l'import OSM date d'avant cette étape)
 python run_all.py datatourisme --datatourisme <archive ou dossier du flux>
 python run_all.py stats
 cd ..
@@ -103,9 +104,11 @@ cd frontend && npm install && npm run dev
 | GTFS TER | transport.data.gouv.fr → « Horaires des TER SNCF » → ressource GTFS | Télécharger le zip et passer son chemin (ou l'URL) à `--gtfs`. La journée type (jour de semaine le plus chargé) est choisie automatiquement. |
 | SNCF Open Data | ressources.data.sncf.com | `python run_all.py sncf --inspect` affiche les champs disponibles. Ajuster `DATASETS` / `FIELDS` dans `sncf.py` si les noms ont changé. |
 | Formes des lignes du RFN | SNCF Open Data, téléchargé par `python run_all.py rail` | Géométrie du réseau ferré : les trajets suivent les voies sur la carte. Si le téléchargement échoue, passer le fichier GeoJSON avec `--rail <fichier>` ou utiliser OSM avec `--rail-osm`. |
-| OpenStreetMap | API Overpass publique | Environ 2 s de pause entre deux lots de gares. `--osm-limit 5` permet un test rapide. |
+| OpenStreetMap | API Overpass publique | Environ 2 s de pause entre deux lots de gares. `--osm-limit 5` permet un test rapide. Les lacs sont placés sur la rive la plus proche de chaque gare, et non à leur centre (le centre du lac du Bourget est à plus de 3 km de la gare d'Aix-les-Bains). |
 | API Géo (geo.api.gouv.fr) | Appelée par l'API au moment de la recherche | Localise une commune demandée comme destination (« pêcher à Herbeys »). Si elle n'a pas de gare, on cherche autour des gares à moins de 12 km. Gratuite, sans clé. |
-| DATAtourisme | diffuseur.datatourisme.fr | Créer un compte, puis un flux « Auvergne-Rhône-Alpes », format JSON-LD (un fichier par objet). **Le faire tôt : la génération du flux prend du temps.** |
+| DATAtourisme | diffuseur.datatourisme.fr | Créer un compte, puis un flux « Auvergne-Rhône-Alpes », format JSON-LD (un fichier par objet). **Le faire tôt : la génération du flux prend du temps.** Passer le zip téléchargé, ou l'URL de téléchargement du flux, à `--datatourisme`. Les itinéraires y gagnent leur longueur et leur durée. |
+
+**Lieux sans nom.** Dans OSM, beaucoup d'aires de jeux, de points de vue ou de coins de pêche n'ont pas de nom : ils reçoivent un nom générique (« Aire de jeux », « Point de vue »). Leur intérêt est fixé à 0,35. Ils ne sont proposés que s'ils répondent à une envie précise (enfants, panorama, pêche) et non à « nature » seule. Ils n'apparaissent pas sur la carte d'ensemble, et la fiche d'une gare permet de les afficher sur demande. La source (OpenStreetMap ou DATAtourisme) est indiquée sur chaque lieu.
 
 `--origins` accepte plusieurs gares, par exemple `"Grenoble,Lyon Part-Dieu"`. Les temps de trajet ne sont calculés que depuis ces gares.
 

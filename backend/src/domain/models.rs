@@ -24,6 +24,8 @@ pub struct Poi {
     pub lat: f64,
     /// Intérêt touristique (0..1) : 1 = site majeur (sommet, lac, château), 0.35 = square, aire de jeux.
     pub interest: f64,
+    /// Lieu sans nom propre dans OSM ("Aire de jeux", "Point de vue"...) : montré seulement s'il est demandé.
+    pub generic: bool,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
