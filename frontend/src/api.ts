@@ -51,6 +51,8 @@ export interface Recommendation {
   breakdown: Record<"theme" | "travel" | "walk" | "richness" | "accessibility", number>;
   pois: PoiHit[];
   facts: string[];
+  /** Envies demandées qu'aucun lieu proche de la gare ne couvre. */
+  missing_themes: string[];
 }
 
 export interface Criteria {

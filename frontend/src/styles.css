@@ -464,6 +464,11 @@ main {
   font-size: 0.75rem;
   font-weight: 600;
 }
+.tag.missing {
+  background: var(--sunken);
+  color: var(--muted);
+  text-decoration: line-through;
+}
 .chevron {
   color: var(--muted);
   font-size: 1.4rem;

@@ -162,6 +162,7 @@ mod tests {
             breakdown: ScoreBreakdown { theme: 1.0, travel: 0.5, walk: 0.5, richness: 0.2, accessibility: 0.5 },
             pois: vec![],
             facts: vec!["Trajet en train : 45 min (direct)".into(), "Lac Bleu à 10 min à pied de la gare".into()],
+            missing_themes: vec![],
         }
     }
 

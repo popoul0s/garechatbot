@@ -113,4 +113,6 @@ pub struct Recommendation {
     pub pois: Vec<PoiHit>,
     /// Faits vérifiables produits par le code (jamais par le LLM).
     pub facts: Vec<String>,
+    /// Envies demandées qu'aucun lieu proche de cette gare ne couvre (ex. « eau » : pas de lac).
+    pub missing_themes: Vec<String>,
 }

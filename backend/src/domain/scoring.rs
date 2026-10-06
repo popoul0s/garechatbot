@@ -1,6 +1,9 @@
 //! Sélection et classement des destinations. Entièrement déterministe : le LLM n'intervient pas ici.
 //!
-//! score = 0.35 × thème + 0.25 × trajet + 0.15 × marche + 0.15 × richesse + 0.10 × accessibilité
+//! score = (0.35 × envies + 0.25 × trajet + 0.15 × marche + 0.15 × richesse + 0.10 × accessibilité)
+//!         × 0.85 par envie précise demandée mais absente (ex. « lac » sans aucun lac près de la gare)
+//!
+//! envies = part pondérée des envies couvertes par les lieux de la gare (voir `theme_weight`).
 
 use std::collections::HashMap;
 
@@ -16,8 +19,60 @@ pub const W_ACCESS: f64 = 0.10;
 pub const DEFAULT_MAX_TRAVEL: i32 = 120;
 pub const DEFAULT_MAX_WALK: i32 = 30;
 const POIS_PER_RECOMMENDATION: usize = 5;
+/// Pénalité par envie précise (poids 1 : lac, musée, patrimoine, montagne, famille) non couverte.
+pub const MISSING_PRECISE_PENALTY: f64 = 0.85;
 /// Nombre de POI pertinents à partir duquel la richesse est maximale.
 const RICHNESS_SATURATION: f64 = 5.0;
+
+/// Poids d'un thème dans la note « correspond à vos envies » : une envie précise (lac, musée...)
+/// compte plus qu'une envie vague (« nature » est porté par presque tous les lieux de plein air).
+pub fn theme_weight(theme: &str) -> f64 {
+    match theme {
+        "nature" => 0.4,
+        "randonnee" | "loisirs" => 0.7,
+        "panorama" | "culture" => 0.8,
+        _ => 1.0, // eau, montagne, patrimoine, musee, famille
+    }
+}
+
+/// Part pondérée des envies couvertes par l'ensemble des lieux d'une gare (0..1).
+/// Chaque envie est évaluée avec le lieu le plus intéressant qui la porte.
+fn coverage(hits: &[PoiHit], wanted: &[String]) -> (f64, Vec<String>) {
+    let total: f64 = wanted.iter().map(|t| theme_weight(t)).sum();
+    let mut got = 0.0;
+    let mut missing = Vec::new();
+    for t in wanted {
+        let best_interest = hits
+            .iter()
+            .filter(|h| h.poi.tags.contains(t))
+            .map(|h| h.poi.interest)
+            .fold(None, |acc: Option<f64>, i| Some(acc.map_or(i, |a| a.max(i))));
+        match best_interest {
+            Some(i) => got += theme_weight(t) * (0.4 + 0.6 * i),
+            None => missing.push(t.clone()),
+        }
+    }
+    (if total > 0.0 { got / total } else { 0.0 }, missing)
+}
+
+/// Lieux à mettre en avant : le meilleur lieu de chaque envie demandée d'abord (pour montrer
+/// que la destination couvre bien « balade » ET « lac »), puis les autres par pertinence.
+fn showcase(mut hits: Vec<PoiHit>, wanted: &[String], limit: usize) -> Vec<PoiHit> {
+    let mut order: Vec<&String> = wanted.iter().collect();
+    order.sort_by(|a, b| theme_weight(b).total_cmp(&theme_weight(a)));
+    let mut out = Vec::new();
+    for t in order {
+        if out.iter().any(|h: &PoiHit| h.poi.tags.contains(t)) {
+            continue;
+        }
+        if let Some(i) = hits.iter().position(|h| h.poi.tags.contains(t)) {
+            out.push(hits.remove(i));
+        }
+    }
+    out.extend(hits);
+    out.truncate(limit);
+    out
+}
 
 /// Pertinence d'un POI pour les critères : part des thèmes couverts, complétée par le plein texte.
 fn poi_match(row: &CandidateRow, wanted: &[String], has_keywords: bool) -> f64 {
@@ -71,6 +126,7 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
             hits.sort_by(|a, b| b.relevance.total_cmp(&a.relevance).then(a.walk_minutes.cmp(&b.walk_minutes)));
 
             let best = hits[0].relevance;
+            let (covered, missing_themes) = coverage(&hits, &wanted);
             let strong: Vec<&PoiHit> = hits.iter().filter(|h| h.relevance >= best * 0.99).collect();
             let nearest_strong_walk = strong.iter().map(|h| h.walk_minutes).min().unwrap_or(0) as f64;
             // richesse pondérée par l'intérêt : 10 squares ne valent pas 10 sites majeurs
@@ -78,7 +134,8 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
 
             let travel_minutes = first.travel_minutes;
             let breakdown = ScoreBreakdown {
-                theme: best,
+                // sans envie précise (mots-clés seuls), on garde la pertinence du meilleur lieu
+                theme: if wanted.is_empty() { best } else { covered },
                 travel: travel_minutes
                     .map(|m| (1.0 - m as f64 / max_travel).clamp(0.0, 1.0))
                     .unwrap_or(1.0),
@@ -87,13 +144,15 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
                 accessibility: 0.5 * f64::from(u8::from(first.nb_changes.unwrap_or(0) == 0))
                     + 0.5 * f64::from(u8::from(first.station_pmr == Some(true))),
             };
-            let score = W_THEME * breakdown.theme
+            let missing_precise = missing_themes.iter().filter(|t| theme_weight(t) >= 1.0).count();
+            let score = (W_THEME * breakdown.theme
                 + W_TRAVEL * breakdown.travel
                 + W_WALK * breakdown.walk
                 + W_RICHNESS * breakdown.richness
-                + W_ACCESS * breakdown.accessibility;
+                + W_ACCESS * breakdown.accessibility)
+                * MISSING_PRECISE_PENALTY.powi(missing_precise as i32);
 
-            hits.truncate(POIS_PER_RECOMMENDATION);
+            let hits = showcase(hits, &wanted, POIS_PER_RECOMMENDATION);
             let station = StationSummary {
                 id: first.station_id,
                 name: first.station_name.clone(),
@@ -112,6 +171,7 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
                 breakdown,
                 pois: hits,
                 facts,
+                missing_themes,
             })
         })
         .collect();
@@ -220,7 +280,31 @@ mod tests {
         let recos = rank(rows, &criteria, 3);
         assert_eq!(recos[0].station.name, "Avec famille");
         assert_eq!(recos[0].breakdown.theme, 1.0);
-        assert_eq!(recos[1].breakdown.theme, 0.5);
+        assert!(recos[1].breakdown.theme < 0.5, "seul le thème vague « nature » est couvert");
+        assert_eq!(recos[1].missing_themes, vec!["famille".to_string()]);
+    }
+
+    #[test]
+    fn une_balade_avec_lac_prefere_la_gare_qui_a_les_deux() {
+        // « balader voir un lac » : randonnée + eau (+ nature)
+        let criteria = Criteria { themes: vec!["randonnee".into(), "eau".into(), "nature".into()], ..Default::default() };
+        let rows = vec![
+            // gare A : sentiers et rochers, pas de lac, plus proche
+            row(1, "Sans lac", 20, 10, &["randonnee", "nature"], 5),
+            row(1, "Sans lac", 20, 11, &["montagne", "randonnee", "nature"], 8),
+            // gare B : un lac et un sentier, un peu plus loin
+            row(2, "Avec lac", 35, 20, &["eau", "nature"], 15),
+            row(2, "Avec lac", 35, 21, &["randonnee", "nature"], 10),
+            // gare C : un lac seul
+            row(3, "Lac seul", 30, 30, &["eau", "nature"], 10),
+        ];
+        let recos = rank(rows, &criteria, 3);
+        assert_eq!(recos[0].station.name, "Avec lac");
+        assert!(recos.iter().position(|r| r.station.name == "Lac seul") < recos.iter().position(|r| r.station.name == "Sans lac"));
+        let sans_lac = recos.iter().find(|r| r.station.name == "Sans lac").unwrap();
+        assert_eq!(sans_lac.missing_themes, vec!["eau".to_string()]);
+        // la carte de résultat montre d'abord le lac, puis le sentier
+        assert!(recos[0].pois[0].poi.tags.contains(&"eau".to_string()));
     }
 
     #[test]

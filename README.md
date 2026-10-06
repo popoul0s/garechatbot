@@ -36,12 +36,17 @@ Question (+ critères de la session + gare sélectionnée sur la carte)
 **Scoring** (`backend/src/domain/scoring.rs`), chaque composante est entre 0 et 1 :
 
 ```
-score = 0.35 × thème        (part des thèmes demandés couverts par le meilleur POI, + plein texte)
-      + 0.25 × trajet       (1 − durée / durée max)
-      + 0.15 × marche       (1 − marche jusqu'au meilleur POI / marche max)
-      + 0.15 × richesse     (nombre de POI pertinents, saturé à 5)
-      + 0.10 × accessibilité (trajet direct, gare PMR)
+score = ( 0.35 × envies      (part pondérée des envies couvertes par les lieux de la gare)
+        + 0.25 × trajet      (1 − durée / durée max)
+        + 0.15 × marche      (1 − marche jusqu'au lieu le plus pertinent / marche max)
+        + 0.15 × richesse    (lieux pertinents pondérés par leur intérêt, saturé à 5)
+        + 0.10 × accessibilité (trajet direct, gare PMR) )
+        × 0.85 par envie précise demandée mais absente (ex. « lac » sans lac près de la gare)
 ```
+
+- **Poids des envies** : précises (lac, montagne, patrimoine, musée, enfants) = 1, panorama et culture = 0,8, randonnée et loisirs = 0,7, « nature » = 0,4 (presque tous les lieux de plein air la portent).
+- **Intérêt touristique d'un lieu** (calculé en SQL depuis sa catégorie) : sommet, lac, cascade, château, musée… = 1 ; fiche DATAtourisme = 0,85 ; monument, plage… = 0,7 ; square, aire de jeux = 0,35. La pertinence d'un lieu vaut correspondance × (0,4 + 0,6 × intérêt).
+- Les lieux de même nom (« Aire de jeux ») ne comptent qu'une fois.
 
 Le détail du score est renvoyé par l'API et affiché sous chaque recommandation.
 

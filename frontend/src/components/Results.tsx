@@ -60,11 +60,16 @@ function Card({ r, rank, explanation, wanted, onOpen }: {
           <span className="places">
             {r.pois.slice(0, 3).map((p) => p.name).join(" · ")}
           </span>
-          {matched.length > 0 && (
+          {(matched.length > 0 || r.missing_themes.length > 0) && (
             <span className="tags">
               {matched.map((t) => (
                 <span key={t} className="tag">
-                  {TAG_LABELS[t] ?? t}
+                  ✓ {TAG_LABELS[t] ?? t}
+                </span>
+              ))}
+              {r.missing_themes.map((t) => (
+                <span key={t} className="tag missing" title="Aucun lieu de ce type à proximité de la gare">
+                  ✗ {TAG_LABELS[t] ?? t}
                 </span>
               ))}
             </span>
