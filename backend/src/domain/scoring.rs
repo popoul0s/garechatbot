@@ -21,6 +21,8 @@ pub const DEFAULT_MAX_WALK: i32 = 30;
 const POIS_PER_RECOMMENDATION: usize = 5;
 /// Pénalité par envie précise (poids 1 : lac, musée, patrimoine, montagne, famille) non couverte.
 pub const MISSING_PRECISE_PENALTY: f64 = 0.85;
+/// Note « trajet » de la gare de départ elle-même : neutre (ni bonus d'un trajet nul, ni pénalité).
+pub const ON_SITE_TRAVEL_SCORE: f64 = 0.5;
 /// Nombre de POI pertinents à partir duquel la richesse est maximale.
 const RICHNESS_SATURATION: f64 = 5.0;
 
@@ -136,9 +138,12 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
             let breakdown = ScoreBreakdown {
                 // sans envie précise (mots-clés seuls), on garde la pertinence du meilleur lieu
                 theme: if wanted.is_empty() { best } else { covered },
-                travel: travel_minutes
-                    .map(|m| (1.0 - m as f64 / max_travel).clamp(0.0, 1.0))
-                    .unwrap_or(1.0),
+                // sur place (gare de départ) : note neutre, pour ne pas écraser les vraies sorties en train
+                travel: match travel_minutes {
+                    Some(0) => ON_SITE_TRAVEL_SCORE,
+                    Some(m) => (1.0 - m as f64 / max_travel).clamp(0.0, 1.0),
+                    None => 1.0,
+                },
                 walk: (1.0 - nearest_strong_walk / max_walk).clamp(0.0, 1.0),
                 richness: (relevant / RICHNESS_SATURATION).min(1.0),
                 accessibility: 0.5 * f64::from(u8::from(first.nb_changes.unwrap_or(0) == 0))
@@ -194,7 +199,9 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
 /// et sont transmises au LLM comme seule matière autorisée.
 fn build_facts(row: &CandidateRow, hits: &[PoiHit]) -> Vec<String> {
     let mut facts = Vec::new();
-    if let Some(m) = row.travel_minutes {
+    if row.travel_minutes == Some(0) {
+        facts.push("Sur place : pas de train à prendre depuis votre gare de départ".into());
+    } else if let Some(m) = row.travel_minutes {
         let changes = match row.nb_changes.unwrap_or(0) {
             0 => "direct".to_string(),
             1 => "1 correspondance".to_string(),
@@ -349,6 +356,16 @@ mod tests {
         // le parc ne couvre ni randonnée ni lac : il n'est pas proposé
         let recos = rank(rows, &criteria, 5);
         assert_eq!(recos.iter().map(|r| r.station.name.as_str()).collect::<Vec<_>>(), vec!["Lac"]);
+    }
+
+    #[test]
+    fn la_gare_de_depart_est_proposee_sans_ecraser_les_sorties_en_train() {
+        let criteria = Criteria { themes: vec!["eau".into()], ..Default::default() };
+        let rows = vec![row(1, "Départ", 0, 10, &["eau"], 5), row(2, "En train", 30, 20, &["eau"], 5)];
+        let recos = rank(rows, &criteria, 5);
+        let depart = recos.iter().find(|r| r.station.name == "Départ").expect("la gare de départ est proposée");
+        assert_eq!(depart.breakdown.travel, ON_SITE_TRAVEL_SCORE);
+        assert!(depart.facts[0].starts_with("Sur place"));
     }
 
     #[test]

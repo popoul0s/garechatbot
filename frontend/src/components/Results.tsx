@@ -53,6 +53,7 @@ function Card({ r, rank, explanation, wanted, onOpen }: {
         <span className="card-body">
           <span className="card-title">{r.station.name}</span>
           <span className="facts">
+            {r.travel_minutes === 0 && <span>📍 Sur place, sans train</span>}
             {r.travel_minutes !== null && r.travel_minutes > 0 && (
               <span>
                 🚆 {formatMinutes(r.travel_minutes)}

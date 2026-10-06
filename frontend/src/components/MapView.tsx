@@ -213,7 +213,10 @@ export default function MapView(props: Props) {
     (m.getSource("lines") as GeoJSONSource).setData(mode === "overview" ? (lines ?? EMPTY) : EMPTY);
 
     if (originLngLat && mode !== "detail") {
-      addMarker(el("origin-marker", `Départ · ${escapeHtml(originName ?? "")}`), originLngLat);
+      // la gare de départ est cliquable : ce qu'il y a à faire sur place, sans prendre le train
+      const div = el("origin-marker clickable", `Départ · ${escapeHtml(originName ?? "")}`, "Voir ce qu'il y a autour");
+      div.addEventListener("click", () => cb.current.onSelectStation(Number(origin?.properties?.id)));
+      addMarker(div, originLngLat);
     }
 
     if (mode === "overview") {

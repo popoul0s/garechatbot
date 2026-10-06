@@ -157,7 +157,8 @@ def run(limit_stations: int | None = None, restart: bool = False) -> None:
         # les gares les plus proches des origines d'abord : --osm-limit garde les plus utiles
         cur.execute(
             """SELECT s.id, s.lon, s.lat, d.station_id IS NOT NULL FROM stations s
-               LEFT JOIN (SELECT station_id, min(minutes) AS m FROM travel_times GROUP BY station_id) t
+               LEFT JOIN (SELECT station_id, min(minutes) AS m FROM travel_times GROUP BY station_id
+                          UNION ALL SELECT DISTINCT origin_id, 0 FROM travel_times) t
                  ON t.station_id = s.id
                LEFT JOIN osm_done d ON d.station_id = s.id
                ORDER BY t.m NULLS LAST, s.id"""

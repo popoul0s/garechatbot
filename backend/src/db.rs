@@ -195,7 +195,7 @@ pub async fn candidates(
          JOIN station_poi sp ON sp.station_id = s.id AND sp.walk_minutes <= $3
          JOIN pois p ON p.id = sp.poi_id
          WHERE CASE WHEN cardinality($5::bigint[]) > 0 THEN s.id = ANY($5)
-                    ELSE s.id <> $1 AND t.minutes <= $2 END"
+                    ELSE (s.id = $1 OR t.minutes <= $2) END"
     ))
     .bind(origin_id)
     .bind(max_travel)
