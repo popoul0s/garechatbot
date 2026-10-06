@@ -20,6 +20,8 @@ export interface Poi {
   url: string | null;
   lon: number;
   lat: number;
+  /** Intérêt touristique calculé par le serveur : 1 = site majeur, 0.35 = square, aire de jeux. */
+  interest: number;
 }
 
 export interface PoiNearStation extends Poi {

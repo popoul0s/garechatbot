@@ -22,6 +22,8 @@ pub struct Poi {
     pub url: Option<String>,
     pub lon: f64,
     pub lat: f64,
+    /// Intérêt touristique (0..1) : 1 = site majeur (sommet, lac, château), 0.35 = square, aire de jeux.
+    pub interest: f64,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -86,6 +88,8 @@ pub struct PoiHit {
     pub distance_m: i32,
     /// Part des thèmes demandés couverts par ce POI (0..1).
     pub match_score: f64,
+    /// Pertinence = correspondance x intérêt touristique : sert à ordonner les lieux.
+    pub relevance: f64,
 }
 
 /// Détail du score : chaque composante est entre 0 et 1, avant pondération.

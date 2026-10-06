@@ -54,7 +54,9 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
                 .into_iter()
                 .map(|r| {
                     let m = poi_match(&r, &wanted, has_keywords);
-                    PoiHit { poi: r.poi, walk_minutes: r.walk_minutes, distance_m: r.distance_m, match_score: m }
+                    // un lac qui correspond vaut plus qu'un square qui correspond
+                    let relevance = m * (0.4 + 0.6 * r.poi.interest);
+                    PoiHit { poi: r.poi, walk_minutes: r.walk_minutes, distance_m: r.distance_m, match_score: m, relevance }
                 })
                 .filter(|h| h.match_score > 0.0)
                 .collect();
@@ -65,21 +67,18 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
             hits.sort_by_key(|h| h.walk_minutes);
             let mut seen = std::collections::HashSet::new();
             hits.retain(|h| seen.insert(h.poi.name.to_lowercase()));
-            // meilleurs POI d'abord, puis les plus proches
-            hits.sort_by(|a, b| {
-                b.match_score
-                    .total_cmp(&a.match_score)
-                    .then(a.walk_minutes.cmp(&b.walk_minutes))
-            });
+            // lieux les plus pertinents d'abord, puis les plus proches
+            hits.sort_by(|a, b| b.relevance.total_cmp(&a.relevance).then(a.walk_minutes.cmp(&b.walk_minutes)));
 
-            let best_match = hits[0].match_score;
-            let strong: Vec<&PoiHit> = hits.iter().filter(|h| h.match_score >= best_match * 0.99).collect();
+            let best = hits[0].relevance;
+            let strong: Vec<&PoiHit> = hits.iter().filter(|h| h.relevance >= best * 0.99).collect();
             let nearest_strong_walk = strong.iter().map(|h| h.walk_minutes).min().unwrap_or(0) as f64;
-            let relevant = hits.iter().filter(|h| h.match_score >= 0.5).count() as f64;
+            // richesse pondérée par l'intérêt : 10 squares ne valent pas 10 sites majeurs
+            let relevant: f64 = hits.iter().filter(|h| h.match_score >= 0.5).map(|h| h.poi.interest).sum();
 
             let travel_minutes = first.travel_minutes;
             let breakdown = ScoreBreakdown {
-                theme: best_match,
+                theme: best,
                 travel: travel_minutes
                     .map(|m| (1.0 - m as f64 / max_travel).clamp(0.0, 1.0))
                     .unwrap_or(1.0),
@@ -184,6 +183,7 @@ mod tests {
                 url: None,
                 lon: 5.7,
                 lat: 45.2,
+                interest: 1.0,
             },
             walk_minutes: walk,
             distance_m: walk * 70,
@@ -233,6 +233,17 @@ mod tests {
         assert_eq!(recos[0].pois.len(), 1);
         assert_eq!(recos[0].pois[0].walk_minutes, 5);
         assert!(recos[0].breakdown.richness <= 0.2);
+    }
+
+    #[test]
+    fn un_site_majeur_passe_devant_un_square_plus_proche() {
+        let criteria = Criteria { themes: vec!["nature".into()], ..Default::default() };
+        let mut rows = vec![row(1, "Ville", 30, 10, &["nature", "famille"], 3), row(1, "Ville", 30, 11, &["nature", "eau"], 22)];
+        rows[0].poi.name = "Square".into();
+        rows[0].poi.interest = 0.35;
+        rows[1].poi.name = "Lac".into();
+        let recos = rank(rows, &criteria, 1);
+        assert_eq!(recos[0].pois[0].poi.name, "Lac");
     }
 
     #[test]

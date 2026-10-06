@@ -6,7 +6,20 @@ use crate::domain::criteria::Criteria;
 use crate::domain::models::{CandidateRow, Poi, PoiNearStation, ReachableStation, Station};
 
 const STATION_COLS: &str = "s.id, s.uic, s.name, s.city, s.lon, s.lat, s.pmr, s.equipments";
-const POI_COLS: &str = "p.id, p.source, p.name, p.description, p.tags, p.url, p.lon, p.lat";
+/// `interest` : intérêt touristique du lieu (0..1), dérivé de sa catégorie d'origine.
+/// Un sommet, un lac ou un château valent plus qu'un square ou une aire de jeux.
+const POI_COLS: &str = "p.id, p.source, p.name, p.description, p.tags, p.url, p.lon, p.lat,
+    (CASE
+        WHEN p.raw_types && ARRAY['natural=peak','natural=waterfall','natural=gorge','natural=cave_entrance',
+             'water=lake','tourism=viewpoint','route=hiking','leisure=nature_reserve','leisure=fishing',
+             'historic=castle','historic=abbey','historic=fort','historic=archaeological_site',
+             'tourism=museum','tourism=zoo','tourism=theme_park'] THEN 1.0
+        WHEN p.source = 'datatourisme' THEN 0.85
+        WHEN p.raw_types && ARRAY['tourism=attraction','tourism=gallery','historic=monument','historic=ruins',
+             'historic=manor','historic=city_gate','natural=beach','leisure=water_park','leisure=swimming_area',
+             'leisure=garden'] THEN 0.7
+        ELSE 0.35
+     END)::float8 AS interest";
 
 pub async fn search_stations(db: &PgPool, q: &str, limit: i64) -> sqlx::Result<Vec<Station>> {
     sqlx::query_as::<_, Station>(&format!(

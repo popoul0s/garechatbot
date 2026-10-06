@@ -23,6 +23,8 @@ interface Entry {
   poi: PoiNearStation; // le plus proche du groupe
   count: number;
   matches: boolean;
+  /** Pertinence = correspondance à la recherche x intérêt touristique (même logique que le serveur). */
+  relevance: number;
 }
 
 const PAGE = 12;
@@ -39,20 +41,25 @@ function buildEntries(pois: PoiNearStation[], wanted: string[], keywords: string
   for (const p of [...pois].sort((a, b) => a.walk_minutes - b.walk_minutes)) {
     const key = fold(p.name);
     const text = fold(`${p.name} ${p.description ?? ""}`);
-    const matches = p.tags.some((t) => wanted.includes(t)) || kws.some((k) => text.includes(k));
+    const tagRatio = wanted.length ? wanted.filter((t) => p.tags.includes(t)).length / wanted.length : 0;
+    const kwHit = kws.some((k) => text.includes(k)) ? 1 : 0;
+    const matches = tagRatio > 0 || kwHit > 0;
+    const interest = p.interest ?? 0.35;
+    // hors recherche, seul l'intérêt touristique compte
+    const relevance = (matches ? Math.min(1, tagRatio + kwHit) : 0.2) * (0.4 + 0.6 * interest);
     const g = groups.get(key);
     if (g) {
       g.count += 1;
       g.matches ||= matches;
     } else {
-      groups.set(key, { poi: p, count: 1, matches });
+      groups.set(key, { poi: p, count: 1, matches, relevance });
     }
   }
-  // correspondances d'abord, puis les lieux uniques avant les groupes génériques, puis la distance
+  // correspondances d'abord, puis les plus intéressantes, puis les plus proches
   return [...groups.values()].sort(
     (a, b) =>
       Number(b.matches) - Number(a.matches) ||
-      Number(a.count > 1) - Number(b.count > 1) ||
+      b.relevance - a.relevance ||
       a.poi.walk_minutes - b.poi.walk_minutes,
   );
 }
@@ -169,6 +176,7 @@ export default function StationDetail(props: Props) {
                     <span className="walk">🚶 {p.walk_minutes} min</span>
                   </span>
                   <span className="muted small">
+                    {p.interest >= 1 && <span className="star">★ Site remarquable · </span>}
                     {c.label}
                     {hasSearch && e.matches && <span className="match"> · correspond à votre recherche</span>}
                   </span>
