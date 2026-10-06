@@ -82,6 +82,7 @@ cd ingestion
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python run_all.py gtfs --gtfs <URL ou chemin du GTFS TER> --origins "Grenoble"
+python run_all.py rail          # tracé réel des voies (SNCF Open Data, ou --rail-osm)
 python run_all.py sncf
 python run_all.py osm
 python run_all.py datatourisme --datatourisme <archive ou dossier du flux>
@@ -101,6 +102,7 @@ cd frontend && npm install && npm run dev
 |---|---|---|
 | GTFS TER | transport.data.gouv.fr → « Horaires des TER SNCF » → ressource GTFS | Télécharger le zip et passer son chemin (ou l'URL) à `--gtfs`. La journée type (jour de semaine le plus chargé) est choisie automatiquement. |
 | SNCF Open Data | ressources.data.sncf.com | `python run_all.py sncf --inspect` affiche les champs disponibles. Ajuster `DATASETS` / `FIELDS` dans `sncf.py` si les noms ont changé. |
+| Formes des lignes du RFN | SNCF Open Data, téléchargé par `python run_all.py rail` | Géométrie du réseau ferré : les trajets suivent les voies sur la carte. Si le téléchargement échoue, passer le fichier GeoJSON avec `--rail <fichier>` ou utiliser OSM avec `--rail-osm`. |
 | OpenStreetMap | API Overpass publique | Environ 2 s de pause entre deux lots de gares. `--osm-limit 5` permet un test rapide. |
 | API Géo (geo.api.gouv.fr) | Appelée par l'API au moment de la recherche | Localise une commune demandée comme destination (« pêcher à Herbeys »). Si elle n'a pas de gare, on cherche autour des gares à moins de 12 km. Gratuite, sans clé. |
 | DATAtourisme | diffuseur.datatourisme.fr | Créer un compte, puis un flux « Auvergne-Rhône-Alpes », format JSON-LD (un fichier par objet). **Le faire tôt : la génération du flux prend du temps.** |

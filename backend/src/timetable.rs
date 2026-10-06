@@ -43,6 +43,8 @@ pub struct Timetable {
     conns: Vec<Conn>,
     trips: Vec<TripInfo>,
     stations: HashMap<i64, StationInfo>,
+    /// Tracé réel des voies entre deux gares consécutives (clé : (min id, max id)), cf. ingestion/rail.py.
+    rail: HashMap<(i64, i64), Vec<[f64; 2]>>,
     /// Journée type dont sont issus les horaires (AAAAMMJJ).
     pub service_date: Option<String>,
 }
@@ -67,8 +69,10 @@ pub struct Leg {
     pub route_name: Option<String>,
     pub headsign: Option<String>,
     pub number: Option<String>,
-    /// Gares desservies, départ et arrivée compris (pour tracer le trajet sur la carte).
+    /// Gares desservies, départ et arrivée compris.
     pub stops: Vec<Stop>,
+    /// Tracé à afficher : suit les voies quand leur géométrie est connue, sinon relie les gares.
+    pub path: Vec<[f64; 2]>,
     #[serde(skip)]
     dep_min: i32,
     #[serde(skip)]
@@ -93,7 +97,7 @@ pub fn hhmm(min: i32) -> String {
 impl Timetable {
     pub fn new(mut conns: Vec<Conn>, trips: Vec<TripInfo>, stations: HashMap<i64, StationInfo>) -> Self {
         conns.sort_by_key(|c| (c.dep, c.arr));
-        Self { conns, trips, stations, service_date: None }
+        Self { conns, trips, stations, rail: HashMap::new(), service_date: None }
     }
 
     /// Charge les horaires depuis la base. Tables absentes (ingestion pas encore relancée) => horaires vides.
@@ -128,6 +132,19 @@ impl Timetable {
             .map(|(id, name, lon, lat)| (id, StationInfo { name, lon, lat }))
             .collect();
         let mut tt = Self::new(conns, trips, stations);
+        let has_rail: bool =
+            sqlx::query_scalar("SELECT to_regclass('rail_segments') IS NOT NULL").fetch_one(db).await?;
+        if has_rail {
+            let rows: Vec<(i64, i64, String)> =
+                sqlx::query_as("SELECT from_station, to_station, ST_AsGeoJSON(geom, 5) FROM rail_segments")
+                    .fetch_all(db)
+                    .await?;
+            for (a, b, geojson) in rows {
+                let v: serde_json::Value = serde_json::from_str(&geojson)?;
+                let coords: Vec<[f64; 2]> = serde_json::from_value(v["coordinates"].clone())?;
+                tt.rail.insert((a.min(b), a.max(b)), if a <= b { coords } else { coords.into_iter().rev().collect() });
+            }
+        }
         tt.service_date = sqlx::query_scalar("SELECT value FROM gtfs_meta WHERE key = 'service_date'")
             .fetch_optional(db)
             .await
@@ -138,6 +155,22 @@ impl Timetable {
 
     pub fn is_empty(&self) -> bool {
         self.conns.is_empty()
+    }
+
+    /// Tracé entre gares successives, orienté dans le sens du trajet.
+    fn path_through(&self, stops: &[Stop]) -> Vec<[f64; 2]> {
+        let mut out: Vec<[f64; 2]> = Vec::new();
+        for w in stops.windows(2) {
+            let (a, b) = (w[0].station_id, w[1].station_id);
+            let seg: Vec<[f64; 2]> = match self.rail.get(&(a.min(b), a.max(b))) {
+                Some(c) if a <= b => c.clone(),
+                Some(c) => c.iter().rev().copied().collect(),
+                None => vec![[w[0].lon, w[0].lat], [w[1].lon, w[1].lat]],
+            };
+            let skip = usize::from(!out.is_empty());
+            out.extend(seg.into_iter().skip(skip));
+        }
+        out
     }
 
     fn stop(&self, id: i64) -> Stop {
@@ -213,6 +246,7 @@ impl Timetable {
                 }
             }
             let wait = legs.last().map_or(0, |prev: &Leg| e.dep - prev.arr_min);
+            let path = self.path_through(&stops);
             legs.push(Leg {
                 from: self.stop(e.from),
                 to: self.stop(x.to),
@@ -224,6 +258,7 @@ impl Timetable {
                 headsign: trip.headsign,
                 number: trip.number,
                 stops,
+                path,
                 dep_min: e.dep,
                 arr_min: x.arr,
             });
@@ -322,6 +357,19 @@ mod tests {
         assert_eq!(deps, vec!["08:00", "10:00"]);
         // gares desservies du premier train : A puis B
         assert_eq!(js[0].legs[0].stops.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["A", "B"]);
+    }
+
+    #[test]
+    fn le_trace_suit_les_voies_dans_le_bon_sens() {
+        let mut t = tt();
+        // tracé connu B(2)->A(1) stocké sous la clé (1, 2) dans le sens 1 -> 2
+        t.rail.insert((1, 2), vec![[0.0, 0.0], [0.5, 0.2], [1.0, 1.0]]);
+        let j = t.earliest(1, 3, 7 * 60).unwrap();
+        assert_eq!(j.legs[0].path, vec![[0.0, 0.0], [0.5, 0.2], [1.0, 1.0]]);
+        // sans géométrie pour B->C : ligne droite entre les deux gares
+        assert_eq!(j.legs[1].path.len(), 2);
+        let stops = vec![t.stop(2), t.stop(1)];
+        assert_eq!(t.path_through(&stops), vec![[1.0, 1.0], [0.5, 0.2], [0.0, 0.0]]);
     }
 
     #[test]

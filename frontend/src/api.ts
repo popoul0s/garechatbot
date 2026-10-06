@@ -136,6 +136,8 @@ export interface Leg {
   headsign: string | null;
   number: string | null;
   stops: JourneyStop[];
+  /** Tracé le long des voies ([lon, lat]) ; à défaut, les gares reliées en ligne droite. */
+  path: [number, number][];
 }
 
 export interface Journey {

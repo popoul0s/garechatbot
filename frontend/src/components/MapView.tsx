@@ -245,7 +245,10 @@ export default function MapView(props: Props) {
             type: "FeatureCollection",
             features: j.legs.map((l) => ({
               type: "Feature",
-              geometry: { type: "LineString", coordinates: l.stops.map((s) => [s.lon, s.lat]) },
+              geometry: {
+                type: "LineString",
+                coordinates: l.path?.length > 1 ? l.path : l.stops.map((s) => [s.lon, s.lat]),
+              },
               properties: {},
             })),
           }
@@ -278,7 +281,9 @@ export default function MapView(props: Props) {
           new maplibregl.Marker({ element: div }).setLngLat([p.lon, p.lat]).addTo(m),
         );
       });
-      const journeyPts = j ? j.legs.flatMap((l) => l.stops.map((s) => [s.lon, s.lat] as [number, number])) : [];
+      const journeyPts = j
+        ? j.legs.flatMap((l) => (l.path?.length > 1 ? l.path : l.stops.map((s) => [s.lon, s.lat] as [number, number])))
+        : [];
       fit(
         m,
         [[detailStation.lon, detailStation.lat], ...detailPois.map((p) => [p.lon, p.lat] as [number, number]), ...journeyPts],

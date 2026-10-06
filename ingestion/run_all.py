@@ -17,6 +17,7 @@ import datatourisme
 import gtfs
 import link
 import osm
+import rail
 import sncf
 from common import connect
 
@@ -39,17 +40,26 @@ def stats() -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Ingestion GareChatBot")
-    p.add_argument("step", choices=["all", "gtfs", "sncf", "osm", "datatourisme", "link", "stats"])
+    p.add_argument("step", choices=["all", "gtfs", "rail", "sncf", "osm", "datatourisme", "link", "stats"])
     p.add_argument("--gtfs", default=DEFAULT_GTFS, help="URL ou chemin du GTFS ferroviaire")
     p.add_argument("--origins", default=DEFAULT_ORIGINS, help="gares d'origine, séparées par des virgules")
     p.add_argument("--datatourisme", help="URL, archive .zip ou dossier du flux DATAtourisme")
     p.add_argument("--osm-limit", type=int, help="ne traiter que les N gares les plus proches des origines")
     p.add_argument("--osm-restart", action="store_true", help="osm : retraiter aussi les gares déjà importées")
+    p.add_argument("--rail", help="rail : fichier GeoJSON du réseau ferré (par défaut, téléchargé depuis SNCF Open Data)")
+    p.add_argument("--rail-osm", action="store_true", help="rail : utiliser OpenStreetMap au lieu de SNCF Open Data")
     p.add_argument("--inspect", action="store_true", help="sncf : afficher les champs des jeux SNCF")
     a = p.parse_args()
 
     if a.step in ("all", "gtfs"):
         gtfs.run(a.gtfs, [o.strip() for o in a.origins.split(",") if o.strip()])
+    if a.step in ("all", "rail"):
+        try:
+            rail.run(a.rail, a.rail_osm)
+        except Exception as e:  # noqa: BLE001 - sans tracé, la carte retombe sur des lignes droites
+            print(f"  ! tracé des voies en échec : {e}")
+            if a.step == "rail":
+                raise
     if a.step in ("all", "sncf"):
         if a.inspect:
             sncf.inspect()
