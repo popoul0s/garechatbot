@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::db;
-use crate::domain::criteria::{extract_with_rules, fold, is_follow_up, Criteria};
+use crate::domain::criteria::{extract_with_rules, fold, is_follow_up, origin_phrase, Criteria};
 
 /// Noms de gares qui sont aussi des mots courants : jamais pris pour un lieu cité.
 const COMMON_WORDS: &[&str] = &["rives", "lac", "bois", "pont", "vif", "port", "gare"];
@@ -128,6 +128,21 @@ pub async fn chat(State(st): State<AppState>, Json(req): Json<ChatRequest>) -> A
             } else if !is_origin && extracted.place.is_none() {
                 extracted.place = Some(name);
             }
+        }
+    }
+    // « en partant de X » : X est l'origine, même si l'IA l'a pris pour la destination.
+    if let Some(phrase) = origin_phrase(message) {
+        let same = |name: &str| {
+            let n = fold(name).replace(|c: char| !c.is_alphanumeric(), " ");
+            let n = n.split_whitespace().collect::<Vec<_>>().join(" ");
+            n.starts_with(&phrase) || phrase.starts_with(&n)
+        };
+        if extracted.place.as_deref().is_some_and(same) {
+            if extracted.origin.as_deref().is_none_or(same) {
+                extracted.origin = extracted.place.take();
+            }
+        } else if extracted.origin.is_none() {
+            extracted.origin = Some(phrase);
         }
     }
     timings.extraction_ms = t.elapsed().as_millis();

@@ -115,7 +115,7 @@ export default function Landing() {
   return (
     <div className="lp">
       <nav className="lp-nav" aria-label="Navigation principale">
-        <a className="lp-wordmark" href="#/">
+        <a className="lp-wordmark" href="#/" onClick={(e) => e.preventDefault()}>
           Aiguillage
         </a>
         <div className="lp-nav-links">

@@ -212,6 +212,40 @@ fn station_mention(folded: &str) -> Option<String> {
 /// Le message prolonge-t-il la recherche précédente (« et si plutôt culturel ? », « avec des enfants »)
 /// ou est-ce une nouvelle demande (« balade lac ») ? Une nouvelle demande ne garde que la gare de départ :
 /// sinon des contraintes d'une recherche antérieure (5 min de marche...) s'appliqueraient en silence.
+/// Mots qui suivent « en partant de » sans être un nom de gare (« depuis la gare », « depuis chez moi »).
+const NOT_A_PLACE: &[&str] = &["la", "le", "les", "l", "chez", "ici", "ma", "mon", "notre", "cette", "ce", "1h", "2h"];
+/// Mots qui terminent le nom d'origine (« en partant de gieres pour un lac »).
+const ORIGIN_END: &[&str] = &[
+    "et", "pour", "avec", "a", "au", "aux", "vers", "jusqu", "en", "dans", "sans", "ou", "qui", "le", "la", "les", "un",
+    "une", "des", "moins", "plus", "max", "maximum", "ce", "cet", "cette", "demain", "aujourd",
+];
+
+/// Ville ou gare de départ annoncée dans le texte (« en partant de gieres », « au depart de st egreve »),
+/// en minuscules sans accents. Indépendant de l'IA : sert à corriger une origine prise pour une destination.
+pub fn origin_phrase(message: &str) -> Option<String> {
+    let folded = fold(message).replace(|c: char| !c.is_alphanumeric(), " ");
+    let words: Vec<&str> = folded.split_whitespace().collect();
+    let markers: [&[&str]; 6] =
+        [&["en", "partant", "de"], &["partant", "de"], &["au", "depart", "de"], &["je", "pars", "de"], &["depuis"], &["en", "partant", "d"]];
+    let mut best: Option<String> = None;
+    for i in 0..words.len() {
+        for m in markers {
+            if words[i..].starts_with(m) {
+                let rest = &words[i + m.len()..];
+                let Some(first) = rest.first() else { continue };
+                if NOT_A_PLACE.contains(first) || first.chars().all(|c| c.is_ascii_digit()) {
+                    continue;
+                }
+                let name: Vec<&str> = rest.iter().take_while(|w| !ORIGIN_END.contains(w)).take(4).copied().collect();
+                if !name.is_empty() {
+                    best = Some(name.join(" "));
+                }
+            }
+        }
+    }
+    best
+}
+
 pub fn is_follow_up(message: &str, extracted: &Criteria) -> bool {
     let text = fold(message);
     let padded = padded_words(&text);
@@ -377,6 +411,15 @@ mod tests {
         let c = extract_with_rules("Moins de 20 min de marche, à moins de 1h de Grenoble");
         assert_eq!(c.max_walk_minutes, Some(20));
         assert_eq!(c.max_travel_minutes, Some(60));
+    }
+
+    #[test]
+    fn origine_annoncee_dans_le_texte() {
+        assert_eq!(origin_phrase("faire une balade en partant de gieres").as_deref(), Some("gieres"));
+        assert_eq!(origin_phrase("un lac au départ de Saint-Égrève pour la journée").as_deref(), Some("saint egreve"));
+        assert_eq!(origin_phrase("je pars de Lyon Part-Dieu avec les enfants").as_deref(), Some("lyon part dieu"));
+        assert_eq!(origin_phrase("10 minutes à pied depuis la gare"), None);
+        assert_eq!(origin_phrase("une balade au bord d'un lac"), None);
     }
 
     #[test]

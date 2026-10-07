@@ -179,19 +179,27 @@ pub async fn has_travel_times(db: &PgPool, origin_id: i64) -> sqlx::Result<bool>
 /// « Aix-les-Bains - Le Revard »). Comparaison sur le nom de base (avant « - »), sans accents,
 /// casse ni ponctuation. Renvoie (nom de base, clé normalisée), plus long d'abord.
 pub async fn stations_in_text(db: &PgPool, text: &str) -> sqlx::Result<Vec<(String, String)>> {
+    // clé courte en plus de la clé complète : « Gières Gare » est aussi reconnue par « gieres »
     sqlx::query_as(
         r#"WITH m AS (SELECT ' ' || regexp_replace(unaccent(lower($1)), '[^a-z0-9]+', ' ', 'g') || ' ' AS t),
-                n AS (SELECT DISTINCT split_part(name, ' - ', 1) AS base,
+                b AS (SELECT DISTINCT split_part(name, ' - ', 1) AS base,
                              trim(regexp_replace(unaccent(lower(split_part(name, ' - ', 1))), '[^a-z0-9]+', ' ', 'g')) AS key
-                      FROM stations)
-           SELECT n.base, n.key
+                      FROM stations),
+                n AS (SELECT base, key FROM b
+                      UNION
+                      SELECT base, regexp_replace(key, ' (gare|ville|centre|sncf)( .*)?$', '') FROM b)
+           SELECT DISTINCT ON (n.key) n.base, n.key
            FROM n, m
            WHERE length(n.key) >= 4 AND position(' ' || n.key || ' ' IN m.t) > 0
-           ORDER BY length(n.key) DESC"#,
+           ORDER BY n.key, length(n.base)"#,
     )
     .bind(text)
     .fetch_all(db)
     .await
+    .map(|mut v: Vec<(String, String)>| {
+        v.sort_by_key(|(_, k)| std::cmp::Reverse(k.len()));
+        v
+    })
 }
 
 /// Gare dont le nom ou la commune correspond exactement au lieu demandé.

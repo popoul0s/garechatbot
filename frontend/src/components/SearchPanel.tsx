@@ -24,7 +24,7 @@ const THEMES = ["nature", "randonnee", "montagne", "eau", "culture", "patrimoine
 /** Étapes 1 et 2 : gare de départ, puis envie (texte libre ou filtres). */
 export default function SearchPanel(props: Props) {
   const { criteria: c } = props;
-  const [text, setText] = useState("");
+  const [text, setText] = useState(props.query ?? "");
   const [showFilters, setShowFilters] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 

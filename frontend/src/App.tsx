@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { go } from "./route";
 import {
   Answer,
   api,
@@ -51,12 +52,13 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
 
   const [criteria, setCriteria] = useState<Criteria>({ ...EMPTY_CRITERIA, origin: savedOrigin() ?? DEFAULT_ORIGIN });
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [query, setQuery] = useState<string | null>(null);
+  // demande venue de l'accueil : affichée dès le premier rendu (la transition montre le champ déjà rempli)
+  const [query, setQuery] = useState<string | null>(initialQuery);
   const [resetKey, setResetKey] = useState(0);
   const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [engine, setEngine] = useState<{ label: string; ms: number } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!!initialQuery);
   const [error, setError] = useState<string | null>(null);
 
   const [detail, setDetail] = useState<StationDetailData | null>(null);
@@ -122,7 +124,8 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
     try {
       const d = await api.chat(text, sessionId, askAround?.id ?? null, criteria);
       setSessionId(d.session_id);
-      setCriteria({ ...d.criteria, origin: d.criteria.origin ?? criteria.origin, around_station_id: null });
+      // gare de départ : celle réellement retenue par la recherche (« en partant de gieres » -> Gières)
+      setCriteria({ ...d.criteria, origin: d.origin?.name ?? d.criteria.origin ?? criteria.origin, around_station_id: null });
       afterResults(d);
       // Sans IA, le texte généré répète les infos déjà affichées sur chaque carte : on ne le montre pas.
       setAnswer(d.engine.generation === "llm" ? d.answer : null);
@@ -197,7 +200,15 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
   return (
     <div className={`app tab-${mobileTab}`}>
       <header>
-        <a className="brand" href="#/" title="Retour à l'accueil">
+        <a
+          className="brand"
+          href="#/"
+          title="Retour à l'accueil"
+          onClick={(e) => {
+            e.preventDefault();
+            go("home");
+          }}
+        >
           Aiguillage
         </a>
         <span className="tagline">Sorties en train en Auvergne-Rhône-Alpes</span>

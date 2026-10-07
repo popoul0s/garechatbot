@@ -491,3 +491,101 @@
     transition: none !important;
   }
 }
+
+/* ---------- Transition accueil <-> appli (View Transitions API) ----------
+   Le logo, le champ de recherche et le réseau deviennent le logo, le champ et la carte de l'appli. */
+.lp-wordmark,
+.app > header .brand {
+  view-transition-name: brand;
+}
+.lp-search,
+.app .ask-row {
+  view-transition-name: ask;
+}
+.lp-network,
+.app .map-wrap {
+  view-transition-name: map;
+}
+::view-transition-group(*) {
+  animation-duration: 560ms;
+  animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* éléments partagés : on garde leurs proportions au lieu de les étirer */
+::view-transition-old(brand),
+::view-transition-new(brand),
+::view-transition-old(ask),
+::view-transition-new(ask) {
+  height: 100%;
+  width: auto;
+  object-fit: none;
+  object-position: left center;
+}
+/* champ de recherche : l'ancien bouton s'efface avant que le nouveau apparaisse (pas de superposition) */
+::view-transition-old(ask) {
+  animation: vt-fade-out 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+::view-transition-new(ask) {
+  animation: vt-fade-in 280ms cubic-bezier(0.23, 1, 0.32, 1) 140ms both;
+}
+::view-transition-old(map),
+::view-transition-new(map) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+::view-transition-old(map) {
+  animation: vt-fade-out 300ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+::view-transition-new(map) {
+  animation: vt-fade-in 520ms cubic-bezier(0.23, 1, 0.32, 1) 60ms both;
+}
+/* le reste de la page : l'ancienne s'efface, la nouvelle glisse légèrement dans le sens du trajet */
+::view-transition-old(root) {
+  animation: vt-out 240ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+::view-transition-new(root) {
+  animation: vt-in 460ms cubic-bezier(0.23, 1, 0.32, 1) 90ms both;
+}
+html[data-nav="back"]::view-transition-new(root) {
+  animation-name: vt-in-back;
+}
+@keyframes vt-out {
+  to {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes vt-in-back {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+@keyframes vt-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+/* repli sans View Transitions : fondu d'entrée de la nouvelle page */
+html[data-nav="none"] .app,
+html[data-nav="none"] .lp {
+  animation: vt-in 380ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
