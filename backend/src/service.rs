@@ -146,8 +146,7 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
         let relaxed = scoring::rank(rows, criteria, MAX_RECOMMENDATIONS);
         if relaxed.is_empty() {
             outcome.notes.push(
-                "Aucune destination des données disponibles ne correspond à ces critères, même en les assouplissant. \
-                 Essayez un autre thème ou une durée plus longue."
+                "Aucune destination des données disponibles ne correspond à ces critères, même en les assouplissant."
                     .into(),
             );
         } else {

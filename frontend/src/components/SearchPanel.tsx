@@ -16,6 +16,8 @@ interface Props {
   query: string | null;
   /** Change à chaque « nouvelle recherche » : le champ est alors vidé. */
   resetKey: number;
+  /** Modification d'une recherche déjà affichée : revenir aux résultats sans relancer. */
+  onCancel?: () => void;
 }
 
 const DURATIONS = [30, 60, 90, 120, 180];
@@ -58,16 +60,6 @@ export default function SearchPanel(props: Props) {
         <label htmlFor="ask-input" className="ask-label">
           {props.askAround ? `Votre question sur ${props.askAround.name}` : "Qu'avez-vous envie de faire ?"}
         </label>
-        {!props.askAround && c.place && (
-          <div className="context-chip">
-            <span>
-              Destination : <strong>{c.place}</strong>
-            </span>
-            <button type="button" onClick={() => update({ place: null })} aria-label="Retirer la destination">
-              ✕
-            </button>
-          </div>
-        )}
         {props.askAround && (
           <div className="context-chip">
             <span>
@@ -109,6 +101,11 @@ export default function SearchPanel(props: Props) {
             Chercher
           </button>
         </div>
+        {props.onCancel && (
+          <button type="button" className="link-button" onClick={props.onCancel}>
+            Annuler, revenir aux résultats
+          </button>
+        )}
       </form>
 
       <button
@@ -117,7 +114,7 @@ export default function SearchPanel(props: Props) {
         aria-expanded={showFilters}
         onClick={() => setShowFilters((v) => !v)}
       >
-        {showFilters ? "Masquer les filtres" : "Ou choisir avec des filtres"}
+        {showFilters ? "Masquer les filtres" : "Ou choisir avec des critères"}
         {activeCount > 0 && <span className="count">{activeCount}</span>}
       </button>
 

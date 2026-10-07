@@ -2,6 +2,16 @@
 
 Prototype de plateforme de tourisme ferroviaire. Le nom vient de l'aiguillage, l'appareil qui oriente un train d'une voie à l'autre : l'appli oriente le voyageur vers la bonne gare. (Le code garde son ancien nom technique, `garechatbot`, pour la base et les paquets : inutile de recréer la base.)
 
+**Parcours dans l'appli** :
+- après une recherche, la demande se replie sur une ligne (« Modifier » la rouvre) ;
+- « Ce que j'ai compris » affiche chaque critère retenu par l'IA ou les règles, sous forme de pastilles modifiables. Une modification relance la recherche sans IA ;
+- le chargement montre les étapes (compréhension, recherche, classement) ;
+- une carte de résultat montre le trajet et le lieu phare, le reste se déplie ; la carte et la liste se répondent au survol ;
+- sans résultat, des assouplissements sont proposés en un clic ;
+- la fiche d'une gare a trois onglets (À voir, Y aller, La gare) et un bouton « Prochain train » ;
+- sur mobile, la carte occupe l'écran et le panneau glisse par-dessus ;
+- le bouton « Mode jury » affiche le moteur utilisé (IA ou règles) et le temps de réponse.
+
 **Gare de départ obligatoire** : si elle n'est ni citée dans la demande ni choisie, l'API renvoie `needs_origin` et l'appli demande « De quelle gare partez-vous ? », puis relance la même recherche. Aucune gare n'est choisie d'office.
 
 L'accueil (`#/`) présente le projet ; l'appli (carte et recherche) est sur `#/app`. Une demande tapée sur l'accueil est lancée directement dans l'appli (`#/app?q=...`).

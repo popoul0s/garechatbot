@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Train } from "@phosphor-icons/react";
 import { api, formatMinutes, Journey, JourneysResponse } from "../api";
 
@@ -9,6 +9,8 @@ interface Props {
   stationName: string;
   selected: Journey | null;
   onSelect: (j: Journey | null) => void;
+  /** Heure de départ proposée à l'ouverture (ex. l'heure actuelle pour « Prochain train »). */
+  startAfter?: string;
 }
 
 const HOURS = Array.from({ length: 18 }, (_, i) => `${String(i + 5).padStart(2, "0")}:00`);
@@ -19,17 +21,23 @@ function trainLabel(l: Journey["legs"][number]): string {
 }
 
 /** Prochains trains (aller ou retour) entre la gare de départ et la gare choisie, avec le détail. */
-export default function Journeys({ originId, originName, stationId, stationName, selected, onSelect }: Props) {
+export default function Journeys({ originId, originName, stationId, stationName, selected, onSelect, startAfter }: Props) {
   const [dir, setDir] = useState<"aller" | "retour">("aller");
-  const [after, setAfter] = useState("08:00");
+  const [after, setAfter] = useState(startAfter ?? "08:00");
   const [data, setData] = useState<JourneysResponse | null>(null);
   const [loading, setLoading] = useState(false);
   // aller : dernier retour possible le jour même (au moins 1h sur place après l'arrivée du 1er train)
   const [lastReturn, setLastReturn] = useState<{ after: string; departure: string | null } | null>(null);
 
+  const firstDir = useRef(true);
   useEffect(() => {
+    if (firstDir.current) {
+      firstDir.current = false;
+      return;
+    }
     setAfter(dir === "aller" ? "08:00" : "16:00");
   }, [dir]);
+  const hours = HOURS.includes(after) ? HOURS : [after, ...HOURS].sort();
 
   useEffect(() => {
     if (originId == null || originId === stationId) return;
@@ -74,7 +82,7 @@ export default function Journeys({ originId, originName, stationId, stationName,
   return (
     <section className="journeys" aria-label="Horaires des trains">
       <div className="journeys-head">
-        <h3>Trains</h3>
+        <h3>Horaires</h3>
         <div className="seg" role="tablist">
           {(["aller", "retour"] as const).map((d) => (
             <button key={d} role="tab" aria-selected={dir === d} className={dir === d ? "on" : ""} onClick={() => setDir(d)}>
@@ -86,7 +94,7 @@ export default function Journeys({ originId, originName, stationId, stationName,
       <label className="after">
         {fromName} → {toName}, départ après
         <select value={after} onChange={(e) => setAfter(e.target.value)}>
-          {HOURS.map((h) => (
+          {hours.map((h) => (
             <option key={h} value={h}>
               {h.replace(":00", "h")}
             </option>
@@ -151,7 +159,7 @@ export default function Journeys({ originId, originName, stationId, stationName,
       {dir === "aller" && lastReturn && (
         <p className={lastReturn.departure ? "return-ok" : "note"}>
           {lastReturn.departure
-            ? `Retour vers ${originName} possible jusqu'à ${lastReturn.departure} (onglet Retour pour le détail).`
+            ? `Retour vers ${originName} possible jusqu'à ${lastReturn.departure} (bouton Retour pour le détail).`
             : `Aucun train retour vers ${originName} après ${lastReturn.after} : pas d'aller-retour dans la journée avec ce départ.`}
         </p>
       )}

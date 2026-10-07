@@ -25,6 +25,9 @@ interface Props {
   onSelectStation: (id: number) => void;
   onSelectPoi: (id: number) => void;
   visible: boolean;
+  /** Destination survolée dans la liste : son marqueur est mis en avant (et inversement). */
+  highlightId: number | null;
+  onHoverStation: (id: number | null) => void;
 }
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
@@ -97,6 +100,7 @@ export default function MapView(props: Props) {
   const [mapError, setMapError] = useState<string | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
   const poiMarkers = useRef(new Map<number, maplibregl.Marker>());
+  const destEls = useRef(new Map<number, HTMLElement>());
   const popup = useRef<maplibregl.Popup | null>(null);
   const cb = useRef(props);
   cb.current = props;
@@ -229,6 +233,7 @@ export default function MapView(props: Props) {
       if (originLngLat) m.flyTo({ center: originLngLat, zoom: 8.5, duration: 700 });
     }
 
+    destEls.current.clear();
     if (mode === "results") {
       results.forEach((r, i) => {
         const div = el(
@@ -239,6 +244,9 @@ export default function MapView(props: Props) {
           "Voir ce qu'il y a autour",
         );
         div.addEventListener("click", () => cb.current.onSelectStation(r.station.id));
+        div.addEventListener("mouseenter", () => cb.current.onHoverStation(r.station.id));
+        div.addEventListener("mouseleave", () => cb.current.onHoverStation(null));
+        destEls.current.set(r.station.id, div);
         addMarker(div, [r.station.lon, r.station.lat], "left");
       });
       fit(
@@ -339,6 +347,16 @@ export default function MapView(props: Props) {
       .addTo(m);
     m.easeTo({ center: [p.lon, p.lat], duration: 500 });
   }, [ready, props.focusedPoiId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // liste <-> carte : la destination survolée ressort, au-dessus des autres étiquettes
+  useEffect(() => {
+    destEls.current.forEach((div, id) => {
+      const hot = id === props.highlightId;
+      div.classList.toggle("hot", hot);
+      const wrapper = div.closest(".maplibregl-marker") as HTMLElement | null;
+      if (wrapper) wrapper.style.zIndex = hot ? "5" : "";
+    });
+  }, [props.highlightId, props.results, props.mode]);
 
   // Le conteneur est masqué sur mobile quand l'autre onglet est actif : on recalcule la taille.
   useEffect(() => {

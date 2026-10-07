@@ -1,6 +1,7 @@
-import { PersonSimpleWalk, Star } from "@phosphor-icons/react";
+import { ChatCircleText, PersonSimpleWalk, Star, Train } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  api,
   categoryOf,
   CATEGORIES,
   formatMinutes,
@@ -46,11 +47,12 @@ interface Entry {
 
 const PAGE = 12;
 
-const fold = (s: string) =>
-  s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
+const nowHHMM = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /** Un lieu sans nom (aire de jeux, point de vue anonyme) n'est listé que s'il répond à une envie précise. */
 const genericWanted = (p: PoiNearStation, wanted: string[]) => wanted.some((t) => t !== "nature" && p.tags.includes(t));
@@ -78,15 +80,16 @@ function buildEntries(pois: PoiNearStation[], wanted: string[], keywords: string
   // correspondances d'abord, puis les plus intéressantes, puis les plus proches
   return [...groups.values()].sort(
     (a, b) =>
-      Number(b.matches) - Number(a.matches) ||
-      b.relevance - a.relevance ||
-      a.poi.walk_minutes - b.poi.walk_minutes,
+      Number(b.matches) - Number(a.matches) || b.relevance - a.relevance || a.poi.walk_minutes - b.poi.walk_minutes,
   );
 }
 
 /** Étape 4 : ce qu'il y a autour d'une gare. */
 export default function StationDetail(props: Props) {
   const { station, pois, travel, originName, focusedPoiId, wanted, keywords } = props;
+  const [tab, setTab] = useState<"voir" | "trajet" | "gare">("voir");
+  const [startAfter, setStartAfter] = useState<string | undefined>(undefined);
+  const [nextTrain, setNextTrain] = useState<string | null>(null);
   const [cat, setCat] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const itemRefs = useRef(new Map<number, HTMLLIElement>());
@@ -119,12 +122,26 @@ export default function StationDetail(props: Props) {
     setCat(null);
     setLimit(PAGE);
     setShowGeneric(false);
+    setTab("voir");
+    setStartAfter(undefined);
   }, [station.id]);
+
+  // prochain train depuis la gare de départ, à partir de l'heure actuelle (horaires de la journée type)
+  const canTravel = props.originId != null && props.originId !== station.id;
+  useEffect(() => {
+    setNextTrain(null);
+    if (!canTravel) return;
+    api
+      .journeys(props.originId!, station.id, nowHHMM(), 1)
+      .then((d) => setNextTrain(d.journeys[0]?.departure ?? null))
+      .catch(() => setNextTrain(null));
+  }, [props.originId, station.id, canTravel]);
   useEffect(() => {
     props.onVisibleChange(shown.map((e) => e.poi));
   }, [shown.length, cat, station.id, entries]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (focusedPoiId != null) itemRefs.current.get(focusedPoiId)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (focusedPoiId != null)
+      itemRefs.current.get(focusedPoiId)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [focusedPoiId]);
 
   const searchLabel = [...wanted.map((t) => TAG_LABELS[t] ?? t), ...keywords].join(", ");
@@ -134,126 +151,193 @@ export default function StationDetail(props: Props) {
       <button className="back" onClick={props.onBack}>
         ‹ {props.canGoBack ? "Retour aux destinations" : "Retour à la recherche"}
       </button>
-      <h2>{station.name}</h2>
-      <p className="muted">
-        {travel?.minutes != null && originName
-          ? `${formatMinutes(travel.minutes)} de train depuis ${originName}${
-              travel.nb_changes ? `, ${travel.nb_changes} correspondance${travel.nb_changes > 1 ? "s" : ""}` : ", direct"
-            }`
-          : "Temps de trajet non calculé depuis votre gare de départ"}
-        {station.pmr === true && " · Gare accessible en fauteuil"}
-      </p>
-
-      {hasSearch && (
-        <p className={nbMatches > 0 ? "match-summary" : "note"}>
-          {nbMatches > 0
-            ? `${nbMatches} lieu${nbMatches > 1 ? "x" : ""} correspond${nbMatches > 1 ? "ent" : ""} à votre recherche (${searchLabel}).`
-            : `Aucun lieu référencé ici ne correspond à « ${searchLabel} ». Voici ce qu'il y a autour de la gare.`}
+      <div className="detail-head">
+        <h2>{station.name}</h2>
+        <p className="muted">
+          {travel?.minutes === 0
+            ? "Votre gare de départ : rien à prendre, tout est à pied"
+            : travel?.minutes != null && originName
+              ? `${formatMinutes(travel.minutes)} de train depuis ${originName}${
+                  travel.nb_changes
+                    ? `, ${travel.nb_changes} correspondance${travel.nb_changes > 1 ? "s" : ""}`
+                    : ", direct"
+                }`
+              : "Temps de trajet non calculé depuis votre gare de départ"}
         </p>
-      )}
-
-      <Journeys
-        originId={props.originId}
-        originName={originName}
-        stationId={station.id}
-        stationName={station.name}
-        selected={props.journey}
-        onSelect={props.onSelectJourney}
-      />
-
-      <StationInfo pmr={station.pmr} equipments={station.equipments} services={props.services} />
-
-      <button className="primary wide" onClick={props.onAsk}>
-        Poser une question sur cette gare
-      </button>
-
-      <h3>À moins de 30 min à pied</h3>
-      {counts.size > 1 && (
-        <div className="options" role="group" aria-label="Filtrer par type de lieu">
-          <button className={`option ${cat === null ? "on" : ""}`} aria-pressed={cat === null} onClick={() => setCat(null)}>
-            Tout
-          </button>
-          {CATEGORIES.filter((c) => counts.has(c.key)).map((c) => (
+        <div className="detail-actions">
+          {canTravel && (
             <button
-              key={c.key}
-              className={`option ${cat === c.key ? "on" : ""}`}
-              aria-pressed={cat === c.key}
+              className="primary"
               onClick={() => {
-                setCat(cat === c.key ? null : c.key);
-                setLimit(PAGE);
+                setStartAfter(nowHHMM());
+                setTab("trajet");
               }}
             >
-              <i className="dot" style={{ background: c.color }} />
-              {c.label} ({counts.get(c.key)})
+              <Train size={16} weight="bold" aria-hidden className="ico" />
+              {nextTrain ? ` Prochain train : ${nextTrain}` : " Voir les trains"}
             </button>
-          ))}
+          )}
+          <button className="secondary" onClick={props.onAsk}>
+            <ChatCircleText size={16} aria-hidden className="ico" /> Poser une question
+          </button>
+        </div>
+      </div>
+
+      <div className="tabs" role="tablist" aria-label="Fiche de la gare">
+        {(
+          [
+            ["voir", `À voir (${entries.length})`],
+            ["trajet", "Y aller"],
+            ["gare", "La gare"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            role="tab"
+            id={`tab-${key}`}
+            aria-selected={tab === key}
+            aria-controls={`panel-${key}`}
+            className={tab === key ? "on" : ""}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "trajet" && (
+        <div role="tabpanel" id="panel-trajet" aria-labelledby="tab-trajet" className="tab-panel">
+          {canTravel ? (
+            <Journeys
+              key={startAfter ?? "defaut"}
+              originId={props.originId}
+              originName={originName}
+              stationId={station.id}
+              stationName={station.name}
+              selected={props.journey}
+              onSelect={props.onSelectJourney}
+              startAfter={startAfter}
+            />
+          ) : (
+            <p className="muted">
+              {props.originId == null
+                ? "Choisissez votre gare de départ pour voir les trains."
+                : "C'est votre gare de départ : pas de train à prendre."}
+            </p>
+          )}
         </div>
       )}
-      <ol className="places-list">
-        {shown.map((e, i) => {
-          const p = e.poi;
-          const c = categoryOf(p.tags);
-          const firstOther = hasSearch && !e.matches && (i === 0 || shown[i - 1].matches);
-          return (
-            <li
-              key={p.id}
-              className={firstOther && i > 0 ? "separator" : undefined}
-              ref={(node) => {
-                if (node) itemRefs.current.set(p.id, node);
-                else itemRefs.current.delete(p.id);
-              }}
-            >
-              {firstOther && i > 0 && <span className="list-label">Autres lieux autour de la gare</span>}
+
+      {tab === "gare" && (
+        <div role="tabpanel" id="panel-gare" aria-labelledby="tab-gare" className="tab-panel">
+          <StationInfo pmr={station.pmr} equipments={station.equipments} services={props.services} />
+        </div>
+      )}
+
+      {tab === "voir" && (
+        <div role="tabpanel" id="panel-voir" aria-labelledby="tab-voir" className="tab-panel">
+          {hasSearch && (
+            <p className={nbMatches > 0 ? "match-summary" : "note"}>
+              {nbMatches > 0
+                ? `${nbMatches} lieu${nbMatches > 1 ? "x" : ""} correspond${nbMatches > 1 ? "ent" : ""} à votre recherche (${searchLabel}).`
+                : `Aucun lieu référencé ici ne correspond à « ${searchLabel} ». Voici ce qu'il y a autour de la gare.`}
+            </p>
+          )}
+          <p className="muted small">Lieux à moins de 30 min à pied, numérotés comme sur la carte.</p>
+          {counts.size > 1 && (
+            <div className="options" role="group" aria-label="Filtrer par type de lieu">
               <button
-                className={`place ${focusedPoiId === p.id ? "active" : ""}`}
-                onClick={() => props.onPoiClick(p.id)}
-                title="Voir sur la carte"
+                className={`option ${cat === null ? "on" : ""}`}
+                aria-pressed={cat === null}
+                onClick={() => setCat(null)}
               >
-                <span className="poi-n" style={{ background: c.color }}>
-                  {i + 1}
-                </span>
-                <span className="place-body">
-                  <span className="place-head">
-                    <strong>
-                      {p.name}
-                      {e.count > 1 && <span className="muted"> · {e.count} sur place</span>}
-                    </strong>
-                    <span className="walk">
-                      <PersonSimpleWalk size={14} aria-hidden className="ico" /> {p.walk_minutes} min
-                    </span>
-                  </span>
-                  <span className="muted small">
-                    {p.interest >= 1 && (
-                      <span className="star">
-                        <Star size={12} weight="fill" aria-hidden /> Site remarquable ·{" "}
-                      </span>
-                    )}
-                    {c.label}
-                    {hasSearch && e.matches && <span className="match"> · correspond à votre recherche</span>}
-                    <span className="source"> · {sourceLabel(p.source)}</span>
-                  </span>
-                  {focusedPoiId === p.id && p.description && <span className="small">{p.description.slice(0, 220)}</span>}
-                </span>
+                Tout
               </button>
-            </li>
-          );
-        })}
-        {pois.length === 0 && <li className="muted">Aucun lieu touristique référencé près de cette gare.</li>}
-      </ol>
-      {filtered.length > shown.length && (
-        <button className="more" onClick={() => setLimit((l) => l + PAGE)}>
-          Voir {Math.min(PAGE, filtered.length - shown.length)} lieux de plus
-        </button>
+              {CATEGORIES.filter((c) => counts.has(c.key)).map((c) => (
+                <button
+                  key={c.key}
+                  className={`option ${cat === c.key ? "on" : ""}`}
+                  aria-pressed={cat === c.key}
+                  onClick={() => {
+                    setCat(cat === c.key ? null : c.key);
+                    setLimit(PAGE);
+                  }}
+                >
+                  <i className="dot" style={{ background: c.color }} />
+                  {c.label} ({counts.get(c.key)})
+                </button>
+              ))}
+            </div>
+          )}
+          <ol className="places-list">
+            {shown.map((e, i) => {
+              const p = e.poi;
+              const c = categoryOf(p.tags);
+              const firstOther = hasSearch && !e.matches && (i === 0 || shown[i - 1].matches);
+              return (
+                <li
+                  key={p.id}
+                  className={firstOther && i > 0 ? "separator" : undefined}
+                  ref={(node) => {
+                    if (node) itemRefs.current.set(p.id, node);
+                    else itemRefs.current.delete(p.id);
+                  }}
+                >
+                  {firstOther && i > 0 && <span className="list-label">Autres lieux autour de la gare</span>}
+                  <button
+                    className={`place ${focusedPoiId === p.id ? "active" : ""}`}
+                    onClick={() => props.onPoiClick(p.id)}
+                    title="Voir sur la carte"
+                  >
+                    <span className="poi-n" style={{ background: c.color }}>
+                      {i + 1}
+                    </span>
+                    <span className="place-body">
+                      <span className="place-head">
+                        <strong>
+                          {p.name}
+                          {e.count > 1 && <span className="muted"> · {e.count} sur place</span>}
+                        </strong>
+                        <span className="walk">
+                          <PersonSimpleWalk size={14} aria-hidden className="ico" /> {p.walk_minutes} min
+                        </span>
+                      </span>
+                      <span className="muted small">
+                        {p.interest >= 1 && (
+                          <span className="star">
+                            <Star size={12} weight="fill" aria-hidden /> Site remarquable ·{" "}
+                          </span>
+                        )}
+                        {c.label}
+                        {hasSearch && e.matches && <span className="match"> · correspond à votre recherche</span>}
+                        <span className="source"> · {sourceLabel(p.source)}</span>
+                      </span>
+                      {focusedPoiId === p.id && p.description && (
+                        <span className="small">{p.description.slice(0, 220)}</span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+            {pois.length === 0 && <li className="muted">Aucun lieu touristique référencé près de cette gare.</li>}
+          </ol>
+          {filtered.length > shown.length && (
+            <button className="more" onClick={() => setLimit((l) => l + PAGE)}>
+              Voir {Math.min(PAGE, filtered.length - shown.length)} lieux de plus
+            </button>
+          )}
+          {hiddenGeneric > 0 && (
+            <button className="more" onClick={() => setShowGeneric(true)}>
+              Afficher aussi {hiddenGeneric} lieu{hiddenGeneric > 1 ? "x" : ""} sans nom (aires de jeux, points de vue…)
+            </button>
+          )}
+          <p className="muted small credits">
+            Lieux : © contributeurs OpenStreetMap (ODbL)
+            {pois.some((p) => p.source === "datatourisme") && " · DATAtourisme (offices de tourisme, Etalab 2.0)"}
+          </p>
+        </div>
       )}
-      {hiddenGeneric > 0 && (
-        <button className="more" onClick={() => setShowGeneric(true)}>
-          Afficher aussi {hiddenGeneric} lieu{hiddenGeneric > 1 ? "x" : ""} sans nom (aires de jeux, points de vue…)
-        </button>
-      )}
-      <p className="muted small credits">
-        Lieux : © contributeurs OpenStreetMap (ODbL)
-        {pois.some((p) => p.source === "datatourisme") && " · DATAtourisme (offices de tourisme, Etalab 2.0)"}
-      </p>
     </section>
   );
 }

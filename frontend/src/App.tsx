@@ -16,10 +16,22 @@ import MapView, { MapMode } from "./components/MapView";
 import Results from "./components/Results";
 import OriginPrompt from "./components/OriginPrompt";
 import SearchPanel from "./components/SearchPanel";
+import CompactSearch from "./components/CompactSearch";
+import CriteriaChips from "./components/CriteriaChips";
+import LoadingSteps from "./components/LoadingSteps";
+import BottomSheet, { SheetState } from "./components/BottomSheet";
 import StationDetail from "./components/StationDetail";
 
-type MobileTab = "search" | "map";
 const ORIGIN_KEY = "garechatbot.origin";
+const JURY_KEY = "aiguillage.jury";
+
+const readJury = () => {
+  try {
+    return localStorage.getItem(JURY_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
 
 /** Dernière gare de départ utilisée : proposée en un clic, jamais choisie d'office. */
 function savedOrigin(): string | null {
@@ -45,7 +57,14 @@ const SUGGESTIONS = [
 const isMobile = () => window.matchMedia("(max-width: 800px)").matches;
 
 export default function App({ initialQuery = null }: { initialQuery?: string | null }) {
-  const [mobileTab, setMobileTab] = useState<MobileTab>("search");
+  // mobile : la carte occupe l'écran, le panneau glisse par-dessus
+  const [sheet, setSheet] = useState<SheetState>("half");
+  // résultats affichés : la recherche se replie sur une ligne, « Modifier » la rouvre
+  const [editing, setEditing] = useState(false);
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [lastKind, setLastKind] = useState<"ask" | "filters">("ask");
+  // mode jury : moteur (IA ou règles) et temps de réponse affichés sous les résultats
+  const [jury, setJury] = useState(readJury);
   const [origins, setOrigins] = useState<Station[]>([]);
   const [stationsGeo, setStationsGeo] = useState<GeoJSON.FeatureCollection | null>(null);
   const [linesGeo, setLinesGeo] = useState<GeoJSON.FeatureCollection | null>(null);
@@ -109,6 +128,9 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
   // Recherche par filtres : aucune IA, directement la recherche + classement du backend.
   const runFilters = async (next: Criteria) => {
     setCriteria(next);
+    setLastKind("filters");
+    setEditing(false);
+    if (isMobile()) setSheet("half");
     setQuery(null);
     setLoading(true);
     setError(null);
@@ -129,6 +151,9 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
   // Recherche en langage naturel : l'IA comprend la demande, le backend cherche et classe.
   const ask = async (text: string, origin?: string) => {
     setQuery(text);
+    setLastKind("ask");
+    setEditing(false);
+    if (isMobile()) setSheet("half");
     setLoading(true);
     setError(null);
     try {
@@ -162,7 +187,7 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
       .station(id)
       .then((d) => {
         setDetail(d);
-        if (isMobile()) setMobileTab("search");
+        if (isMobile()) setSheet("half");
       })
       .catch(console.error);
   }, []);
@@ -189,6 +214,7 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
     setSessionId(null);
     setCriteria({ ...EMPTY_CRITERIA, origin: criteria.origin });
     setPending(null);
+    setEditing(false);
     setResetKey((k) => k + 1);
     setOutcome(null);
     setAnswer(null);
@@ -210,8 +236,139 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
     null;
   const mapMode: MapMode = detail ? "detail" : results.length > 0 ? "results" : "overview";
 
+  const toggleJury = () => {
+    const next = !jury;
+    setJury(next);
+    try {
+      localStorage.setItem(JURY_KEY, next ? "1" : "0");
+    } catch {
+      /* préférence non mémorisée : sans conséquence */
+    }
+  };
+  const editOrigin = () => {
+    setEditing(true);
+    if (isMobile()) setSheet("full");
+    setTimeout(() => document.getElementById("origin-input")?.focus(), 0);
+  };
+
+  // après une recherche : ligne compacte + « Ce que j'ai compris » ; sinon le formulaire complet
+  const showCompact = !!outcome && !outcome.needs_origin && !editing && !loading && !askAround;
+
+  const panel = detail ? (
+    <StationDetail
+      station={detail.station}
+      pois={detail.pois}
+      services={detail.services ?? []}
+      travel={travelFor(detail.station.id)}
+      originName={criteria.origin}
+      originId={originId}
+      journey={journey}
+      onSelectJourney={setJourney}
+      wanted={outcome ? [...criteria.themes, ...(criteria.audience === "famille" ? ["famille"] : [])] : []}
+      keywords={outcome ? criteria.keywords : []}
+      canGoBack={!!outcome}
+      focusedPoiId={focusedPoi}
+      onBack={() => {
+        setDetail(null);
+        setJourney(null);
+      }}
+      onAsk={askAboutStation}
+      onPoiClick={(id) => {
+        setFocusedPoi(id);
+        if (isMobile()) setSheet("peek");
+      }}
+      onVisibleChange={setVisiblePois}
+    />
+  ) : (
+    <>
+      {showCompact ? (
+        <div className="search-summary">
+          <CompactSearch
+            origin={outcome?.origin?.name ?? criteria.origin}
+            query={lastKind === "ask" ? query : null}
+            onEdit={() => {
+              setEditing(true);
+              if (isMobile()) setSheet("full");
+              setTimeout(() => inputRef.current?.focus(), 0);
+            }}
+          />
+          <CriteriaChips criteria={criteria} outcome={outcome!} onChange={runFilters} onEditOrigin={editOrigin} />
+        </div>
+      ) : (
+        <SearchPanel
+          origins={origins}
+          criteria={criteria}
+          loading={loading}
+          askAround={askAround}
+          onAsk={(text) => ask(text)}
+          onFilters={runFilters}
+          onOrigin={chooseOrigin}
+          onClearAskAround={() => setAskAround(null)}
+          inputRef={inputRef}
+          query={query}
+          resetKey={resetKey}
+          onCancel={outcome && !outcome.needs_origin ? () => setEditing(false) : undefined}
+        />
+      )}
+
+      {error && (
+        <p className="error" role="alert">
+          Le serveur ne répond pas correctement. Vérifiez que l'API est lancée. ({error.slice(0, 120)})
+        </p>
+      )}
+      {loading && <LoadingSteps withAi={lastKind === "ask"} />}
+
+      {!loading && outcome?.needs_origin && (
+        <OriginPrompt
+          query={pending?.kind === "ask" ? pending.text : null}
+          message={outcome.notes[0] ?? null}
+          stations={origins}
+          last={savedOrigin()}
+          onChoose={chooseOrigin}
+        />
+      )}
+
+      {!loading && outcome && !outcome.needs_origin && (
+        <Results
+          criteria={criteria}
+          outcome={outcome}
+          answer={answer}
+          engine={jury ? engine : null}
+          hoveredId={hovered}
+          onHover={setHovered}
+          onOpen={openStation}
+          onRelax={runFilters}
+        />
+      )}
+
+      {!loading && !outcome && (
+        <section className="welcome">
+          <ol className="steps">
+            {STEPS.map(([title, text], i) => (
+              <li key={title}>
+                <span className="step-n">{i + 1}</span>
+                <div>
+                  <strong>{title}</strong>
+                  <p>{text}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <p className="muted">Pour essayer :</p>
+          <div className="suggestions">
+            {SUGGESTIONS.map((s) => (
+              <button key={s} className="suggestion" onClick={() => ask(s)}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+
   return (
-    <div className={`app tab-${mobileTab}`}>
+    <div className="app">
       <header>
         <a
           className="brand"
@@ -225,114 +382,27 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
           Aiguillage
         </a>
         <span className="tagline">Sorties en train en Auvergne-Rhône-Alpes</span>
-        {(outcome || detail) && (
-          <button className="new-search" onClick={reset}>
-            Nouvelle recherche
+        <div className="header-actions">
+          {(outcome || detail) && (
+            <button className="new-search" onClick={reset}>
+              Nouvelle recherche
+            </button>
+          )}
+          <button
+            className={`jury-toggle ${jury ? "on" : ""}`}
+            aria-pressed={jury}
+            onClick={toggleJury}
+            title="Afficher le moteur utilisé (IA ou règles) et le temps de réponse"
+          >
+            Mode jury
           </button>
-        )}
+        </div>
       </header>
 
       <main>
-        <aside className="panel">
-          {detail ? (
-            <StationDetail
-              station={detail.station}
-              pois={detail.pois}
-              services={detail.services ?? []}
-              travel={travelFor(detail.station.id)}
-              originName={criteria.origin}
-              originId={originId}
-              journey={journey}
-              onSelectJourney={setJourney}
-              wanted={outcome ? [...criteria.themes, ...(criteria.audience === "famille" ? ["famille"] : [])] : []}
-              keywords={outcome ? criteria.keywords : []}
-              canGoBack={!!outcome}
-              focusedPoiId={focusedPoi}
-              onBack={() => {
-                setDetail(null);
-                setJourney(null);
-              }}
-              onAsk={askAboutStation}
-              onPoiClick={(id) => {
-                setFocusedPoi(id);
-                if (isMobile()) setMobileTab("map");
-              }}
-              onVisibleChange={setVisiblePois}
-            />
-          ) : (
-            <>
-              <SearchPanel
-                origins={origins}
-                criteria={criteria}
-                loading={loading}
-                askAround={askAround}
-                onAsk={(text) => ask(text)}
-                onFilters={runFilters}
-                onOrigin={chooseOrigin}
-                onClearAskAround={() => setAskAround(null)}
-                inputRef={inputRef}
-                query={query}
-                resetKey={resetKey}
-              />
-
-              {error && (
-                <p className="error" role="alert">
-                  Le serveur ne répond pas correctement. Vérifiez que l'API est lancée. ({error.slice(0, 120)})
-                </p>
-              )}
-              {loading && (
-                <div className="loading" aria-live="polite">
-                  <span className="spinner" aria-hidden /> Recherche des destinations…
-                </div>
-              )}
-
-              {!loading && outcome?.needs_origin && (
-                <OriginPrompt
-                  query={pending?.kind === "ask" ? pending.text : null}
-                  message={outcome.notes[0] ?? null}
-                  stations={origins}
-                  last={savedOrigin()}
-                  onChoose={chooseOrigin}
-                />
-              )}
-
-              {!loading && outcome && !outcome.needs_origin && (
-                <Results
-                  query={query}
-                  criteria={criteria}
-                  outcome={outcome}
-                  answer={answer}
-                  engine={engine}
-                  onOpen={openStation}
-                />
-              )}
-
-              {!loading && !outcome && (
-                <section className="welcome">
-                  <ol className="steps">
-                    {STEPS.map(([title, text], i) => (
-                      <li key={title}>
-                        <span className="step-n">{i + 1}</span>
-                        <div>
-                          <strong>{title}</strong>
-                          <p>{text}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                  <p className="muted">Pour essayer :</p>
-                  <div className="suggestions">
-                    {SUGGESTIONS.map((s) => (
-                      <button key={s} className="suggestion" onClick={() => ask(s)}>
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-            </>
-          )}
-        </aside>
+        <BottomSheet state={sheet} onState={setSheet} label={detail ? detail.station.name : "Recherche"}>
+          {panel}
+        </BottomSheet>
 
         <section className="map-wrap">
           <MapView
@@ -347,19 +417,12 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
             journey={detail ? journey : null}
             onSelectStation={openStation}
             onSelectPoi={setFocusedPoi}
-            visible={mobileTab === "map" || !isMobile()}
+            visible
+            highlightId={hovered}
+            onHoverStation={setHovered}
           />
         </section>
       </main>
-
-      <nav className="mobile-tabs">
-        <button className={mobileTab === "search" ? "active" : ""} onClick={() => setMobileTab("search")}>
-          Recherche
-        </button>
-        <button className={mobileTab === "map" ? "active" : ""} onClick={() => setMobileTab("map")}>
-          Carte{results.length ? ` (${results.length})` : ""}
-        </button>
-      </nav>
     </div>
   );
 }
