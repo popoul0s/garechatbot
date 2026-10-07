@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StationService, StationTraffic } from "../api";
+import { StationService } from "../api";
 
 const ICONS: Record<string, string> = {
   toilettes: "🚻",
@@ -58,7 +58,6 @@ interface Props {
   pmr: boolean | null;
   equipments: string[];
   services: StationService[];
-  traffic: StationTraffic | null;
 }
 
 type Align = "left" | "center" | "right";
@@ -97,8 +96,8 @@ function Tile({ s, open, align, onShow, onHide }: {
   );
 }
 
-/** Infos pratiques d'une gare : trafic (horaires SNCF) et services en pastilles (SNCF Open Data, OpenStreetMap). */
-export default function StationInfo({ pmr, equipments, services, traffic }: Props) {
+/** Infos pratiques d'une gare : services en pastilles (SNCF Open Data, OpenStreetMap). */
+export default function StationInfo({ pmr, equipments, services }: Props) {
   const [tip, setTip] = useState<{ key: string; align: Align } | null>(null);
 
   // l'accessibilité PMR de la gare devient une pastille comme les autres
@@ -135,34 +134,6 @@ export default function StationInfo({ pmr, equipments, services, traffic }: Prop
   return (
     <section className="station-info" aria-label="Infos pratiques de la gare">
       <h3>Infos pratiques</h3>
-      {traffic && (
-        <div className="traffic">
-          <div className="traffic-stats">
-            <span title="Trains au départ de cette gare sur une journée de semaine type">
-              🚆 <strong>{traffic.departures}</strong> trains / jour
-            </span>
-            {traffic.first_departure && (
-              <span title="Premier départ de la journée">
-                🌅 <strong>{traffic.first_departure}</strong>
-              </span>
-            )}
-            {traffic.last_departure && (
-              <span title="Dernier départ de la journée">
-                🌙 <strong>{traffic.last_departure}</strong>
-              </span>
-            )}
-            <span title="Gares atteignables sans correspondance">
-              🎯 <strong>{traffic.direct_destinations}</strong> gares en direct
-            </span>
-          </div>
-          {traffic.directions.length > 0 && (
-            <p className="small">
-              <span className="muted">Directions : </span>
-              {traffic.directions.join(", ")}
-            </p>
-          )}
-        </div>
-      )}
       {rows.length > 0 && (
         <div className="tile-rows">
           {rows.map((r) => (
@@ -192,15 +163,15 @@ export default function StationInfo({ pmr, equipments, services, traffic }: Prop
           ))}
         </div>
       )}
-      {!traffic && rows.length === 0 && (
+      {rows.length === 0 && (
         <p className="muted small">
           Pas encore d'infos pour cette gare (lancer <code>python run_all.py services</code>).
         </p>
       )}
-      {(traffic || sources.length > 0) && (
+      {sources.length > 0 && (
         <p className="source">
           Survolez une pastille pour le détail · Sources :{" "}
-          {[traffic ? "horaires SNCF (GTFS)" : null, ...sources].filter(Boolean).join(" · ")}
+          {sources.join(" · ")}
         </p>
       )}
     </section>

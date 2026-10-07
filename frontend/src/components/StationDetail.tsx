@@ -8,7 +8,6 @@ import {
   sourceLabel,
   Station,
   StationService,
-  StationTraffic,
   TAG_LABELS,
 } from "../api";
 import StationInfo from "./StationInfo";
@@ -18,7 +17,6 @@ interface Props {
   station: Station;
   pois: PoiNearStation[];
   services: StationService[];
-  traffic: StationTraffic | null;
   travel: { minutes: number | null; nb_changes: number | null } | null;
   originName: string | null;
   originId: number | null;
@@ -162,7 +160,7 @@ export default function StationDetail(props: Props) {
         onSelect={props.onSelectJourney}
       />
 
-      <StationInfo pmr={station.pmr} equipments={station.equipments} services={props.services} traffic={props.traffic} />
+      <StationInfo pmr={station.pmr} equipments={station.equipments} services={props.services} />
 
       <button className="primary wide" onClick={props.onAsk}>
         Poser une question sur cette gare

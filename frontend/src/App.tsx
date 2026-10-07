@@ -198,7 +198,6 @@ export default function App() {
               station={detail.station}
               pois={detail.pois}
               services={detail.services ?? []}
-              traffic={detail.traffic ?? null}
               travel={travelFor(detail.station.id)}
               originName={criteria.origin}
               originId={originId}
