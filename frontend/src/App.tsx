@@ -17,6 +17,16 @@ import StationDetail from "./components/StationDetail";
 
 type MobileTab = "search" | "map";
 const DEFAULT_ORIGIN = "Grenoble";
+const ORIGIN_KEY = "garechatbot.origin";
+
+/** Dernière gare de départ choisie (confort : retrouvée au prochain chargement). */
+function savedOrigin(): string | null {
+  try {
+    return localStorage.getItem(ORIGIN_KEY);
+  } catch {
+    return null;
+  }
+}
 
 const STEPS = [
   ["Choisissez votre gare de départ", "Les temps de trajet sont calculés depuis les horaires SNCF."],
@@ -38,7 +48,7 @@ export default function App() {
   const [stationsGeo, setStationsGeo] = useState<GeoJSON.FeatureCollection | null>(null);
   const [linesGeo, setLinesGeo] = useState<GeoJSON.FeatureCollection | null>(null);
 
-  const [criteria, setCriteria] = useState<Criteria>({ ...EMPTY_CRITERIA, origin: DEFAULT_ORIGIN });
+  const [criteria, setCriteria] = useState<Criteria>({ ...EMPTY_CRITERIA, origin: savedOrigin() ?? DEFAULT_ORIGIN });
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
@@ -60,14 +70,22 @@ export default function App() {
       .origins()
       .then((list) => {
         setOrigins(list);
-        if (list.length > 0 && !list.some((o) => o.name === DEFAULT_ORIGIN)) {
-          setCriteria((c) => ({ ...c, origin: list[0].name }));
-        }
+        setCriteria((c) => {
+          if (list.length === 0 || list.some((o) => o.name === c.origin)) return c;
+          const fallback = list.find((o) => o.name === DEFAULT_ORIGIN) ?? list[0];
+          return { ...c, origin: fallback.name };
+        });
       })
       .catch(console.error);
   }, []);
   useEffect(() => {
-    if (criteria.origin) api.mapStations(criteria.origin).then(setStationsGeo).catch(console.error);
+    if (!criteria.origin) return;
+    api.mapStations(criteria.origin).then(setStationsGeo).catch(console.error);
+    try {
+      localStorage.setItem(ORIGIN_KEY, criteria.origin);
+    } catch {
+      /* stockage indisponible : sans conséquence */
+    }
   }, [criteria.origin]);
 
   const afterResults = (o: SearchOutcome) => {

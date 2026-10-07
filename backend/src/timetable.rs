@@ -14,6 +14,18 @@ use sqlx::PgPool;
 pub const MIN_TRANSFER_MIN: i32 = 5;
 /// Durée maximale d'un trajet recherché.
 const MAX_JOURNEY_MIN: i32 = 300;
+/// Temps de trajet minimaux (mêmes règles que ingestion/gtfs.py) : départs entre 6 h et 20 h, 4 h de trajet au plus.
+const TT_FIRST_DEPARTURE: i32 = 6 * 60;
+const TT_LAST_DEPARTURE: i32 = 20 * 60;
+const TT_MAX_TRAVEL: i32 = 240;
+
+/// Meilleur temps de trajet vers une gare depuis une origine, sur la journée type.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BestTime {
+    pub minutes: i32,
+    pub changes: i32,
+    pub departure: i32,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Conn {
@@ -183,6 +195,58 @@ impl Timetable {
         }
     }
 
+    /// Durée minimale vers chaque gare depuis `origin`, en essayant chaque départ de la journée
+    /// (CSA répété). Sert à proposer n'importe quelle gare comme point de départ.
+    pub fn travel_times(&self, origin: i64) -> HashMap<i64, BestTime> {
+        let mut departures: Vec<i32> = self
+            .conns
+            .iter()
+            .filter(|c| c.from == origin && (TT_FIRST_DEPARTURE..=TT_LAST_DEPARTURE).contains(&c.dep))
+            .map(|c| c.dep)
+            .collect();
+        departures.dedup();
+        let mut best: HashMap<i64, BestTime> = HashMap::new();
+        for start in departures {
+            let limit = start + TT_MAX_TRAVEL;
+            // gare -> (arrivée, nombre de trains)
+            let mut arrival: HashMap<i64, (i32, i32)> = HashMap::from([(origin, (start, 0))]);
+            let mut trip_legs: HashMap<u32, i32> = HashMap::new();
+            let first = self.conns.partition_point(|c| c.dep < start);
+            for c in &self.conns[first..] {
+                if c.dep > limit {
+                    break;
+                }
+                let n = match trip_legs.get(&c.trip) {
+                    Some(&n) => n,
+                    None => {
+                        let buffer = if c.from == origin { 0 } else { MIN_TRANSFER_MIN };
+                        match arrival.get(&c.from) {
+                            Some(&(a, legs)) if a + buffer <= c.dep => {
+                                trip_legs.insert(c.trip, legs + 1);
+                                legs + 1
+                            }
+                            _ => continue,
+                        }
+                    }
+                };
+                let better = arrival.get(&c.to).is_none_or(|&(a, l)| c.arr < a || (c.arr == a && n < l));
+                if better {
+                    arrival.insert(c.to, (c.arr, n));
+                }
+            }
+            for (station, (arr, n)) in arrival {
+                if station == origin {
+                    continue;
+                }
+                let t = BestTime { minutes: arr - start, changes: (n - 1).max(0), departure: start };
+                if best.get(&station).is_none_or(|b| (t.minutes, t.changes) < (b.minutes, b.changes)) {
+                    best.insert(station, t);
+                }
+            }
+        }
+        best
+    }
+
     /// Trajet arrivant le plus tôt à `to`, en partant de `from` au plus tôt à `start`.
     pub fn earliest(&self, from: i64, to: i64, start: i32) -> Option<Journey> {
         if from == to {
@@ -349,6 +413,17 @@ mod tests {
             .map(|(id, n)| (id, StationInfo { name: n.into(), lon: 0.0, lat: 0.0 }))
             .collect();
         Timetable::new(conns, trips, stations)
+    }
+
+    #[test]
+    fn temps_de_trajet_depuis_n_importe_quelle_gare() {
+        let t = tt().travel_times(1);
+        assert_eq!(t[&2], BestTime { minutes: 28, changes: 0, departure: 600 });
+        assert_eq!(t[&4], BestTime { minutes: 60, changes: 0, departure: 480 });
+        assert_eq!(t[&3], BestTime { minutes: 70, changes: 1, departure: 480 });
+        // depuis la gare de correspondance, C est en direct
+        assert_eq!(tt().travel_times(2)[&3].changes, 0);
+        assert!(!tt().travel_times(2).contains_key(&1));
     }
 
     #[test]

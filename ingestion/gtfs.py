@@ -230,6 +230,8 @@ def run(source: str, origins: list[str]) -> None:
             )
         print(f"  {len(lines)} lignes")
 
+        # nouveaux horaires : les temps calculés à la demande par l'API (autres origines) sont périmés
+        cur.execute("TRUNCATE travel_times")
         for origin_name in origins:
             target = fold(origin_name)
             matches = [(uic, name) for uic, _, name in rows if fold(name) == target] or [

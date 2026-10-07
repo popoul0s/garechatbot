@@ -179,12 +179,20 @@ main {
 }
 .origin {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
   font-weight: 600;
 }
-.origin select {
+.origin-row {
+  display: flex;
+  gap: 8px;
+}
+.combo {
+  position: relative;
   flex: 1;
+}
+.combo input,
+.locate {
   font: inherit;
   font-weight: 600;
   padding: 8px 10px;
@@ -192,6 +200,49 @@ main {
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
+}
+.combo input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.locate {
+  cursor: pointer;
+  min-width: 42px;
+}
+.locate:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.combo-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.combo-list li {
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.combo-list li.active {
+  background: var(--accent-soft);
+}
+.combo-empty {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--muted);
 }
 .ask {
   display: flex;

@@ -33,6 +33,9 @@ pub async fn stations(State(st): State<AppState>, Query(p): Query<StationsParams
         Some(name) => db::resolve_station(&st.db, &name).await?.map(|s| s.id),
         None => None,
     };
+    if let Some(id) = origin_id {
+        crate::service::ensure_travel_times(&st, id).await?;
+    }
     let rows = db::map_stations(&st.db, origin_id).await?;
     let features = rows
         .into_iter()

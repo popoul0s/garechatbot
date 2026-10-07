@@ -25,6 +25,27 @@ pub struct SearchOutcome {
     pub notes: Vec<String>,
 }
 
+/// Temps de trajet depuis une gare : calculés à la première demande à partir des horaires en mémoire,
+/// puis gardés en base. Toute gare desservie peut ainsi servir de point de départ.
+pub async fn ensure_travel_times(state: &AppState, origin_id: i64) -> AppResult<bool> {
+    if db::has_travel_times(&state.db, origin_id).await? {
+        return Ok(true);
+    }
+    if state.timetable.is_empty() {
+        return Ok(false);
+    }
+    let tt = state.timetable.clone();
+    let times = tokio::task::spawn_blocking(move || tt.travel_times(origin_id))
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    if times.is_empty() {
+        return Ok(false);
+    }
+    db::store_travel_times(&state.db, origin_id, &times).await?;
+    tracing::info!(origin_id, gares = times.len(), "temps de trajet calculés pour une nouvelle origine");
+    Ok(true)
+}
+
 pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOutcome> {
     let mut notes = Vec::new();
 
@@ -66,7 +87,7 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
         }
     };
     // les temps de trajet pré-calculés ne servent que pour une recherche « partout » (sans gare ni lieu imposés)
-    if around.is_none() && criteria.place.is_none() && !db::has_travel_times(&state.db, origin_id).await? {
+    if around.is_none() && criteria.place.is_none() && !ensure_travel_times(state, origin_id).await? {
         outcome.notes.push(format!(
             "Les temps de trajet depuis {origin_name} n'ont pas encore été calculés : je ne peux pas proposer de destination."
         ));

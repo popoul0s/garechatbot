@@ -1,5 +1,6 @@
 import { FormEvent, useRef, useState } from "react";
 import { Criteria, formatMinutes, Station, StationSummary, TAG_LABELS } from "../api";
+import OriginPicker from "./OriginPicker";
 
 interface Props {
   origins: Station[];
@@ -39,21 +40,7 @@ export default function SearchPanel(props: Props) {
 
   return (
     <div className="search">
-      <label className="origin">
-        <span>Je pars de</span>
-        <select
-          value={c.origin ?? ""}
-          onChange={(e) => update({ origin: e.target.value })}
-          disabled={props.origins.length === 0}
-        >
-          {props.origins.length === 0 && <option value={c.origin ?? ""}>{c.origin ?? "…"}</option>}
-          {props.origins.map((o) => (
-            <option key={o.id} value={o.name}>
-              {o.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <OriginPicker value={c.origin} stations={props.origins} onChange={(origin) => update({ origin })} />
 
       <form ref={formRef} onSubmit={submit} className="ask">
         <label htmlFor="ask-input" className="ask-label">

@@ -67,6 +67,7 @@ pub async fn reachable(
     let origin = db::resolve_station(&st.db, &p.from)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("gare « {} »", p.from)))?;
+    crate::service::ensure_travel_times(&st, origin.id).await?;
     let stations = db::reachable_from(&st.db, origin.id, p.max_minutes.unwrap_or(120)).await?;
     Ok(Json(ReachableResponse { origin, stations }))
 }

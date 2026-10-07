@@ -48,8 +48,8 @@ pub async fn resolve_station(db: &PgPool, name: &str) -> sqlx::Result<Option<Sta
          WHERE unaccent(lower(s.name)) LIKE unaccent(lower($1)) || '%'
             OR unaccent(lower(coalesce(s.city, ''))) = unaccent(lower($1))
             OR similarity(s.name, $1) > 0.4
-         ORDER BY EXISTS (SELECT 1 FROM travel_times t WHERE t.origin_id = s.id) DESC,
-                  (unaccent(lower(s.name)) = unaccent(lower($1))) DESC,
+         ORDER BY (unaccent(lower(s.name)) = unaccent(lower($1))) DESC,
+                  EXISTS (SELECT 1 FROM travel_times t WHERE t.origin_id = s.id) DESC,
                   similarity(s.name, $1) DESC, length(s.name)
          LIMIT 1"
     ))
@@ -101,14 +101,47 @@ pub async fn reachable_from(db: &PgPool, origin_id: i64, max_minutes: i32) -> sq
 }
 
 /// Gares pour lesquelles des temps de trajet ont été calculés (gares de départ possibles).
+/// Gares proposées comme point de départ : toutes celles desservies par un train de la journée type
+/// (les temps de trajet sont calculés à la demande). Sans horaires chargés : les origines pré-calculées.
 pub async fn origins(db: &PgPool) -> sqlx::Result<Vec<Station>> {
-    sqlx::query_as::<_, Station>(&format!(
-        "SELECT {STATION_COLS} FROM stations s
-         WHERE EXISTS (SELECT 1 FROM travel_times t WHERE t.origin_id = s.id)
-         ORDER BY s.name"
-    ))
-    .fetch_all(db)
-    .await
+    let has_timetable: bool =
+        sqlx::query_scalar("SELECT to_regclass('connections') IS NOT NULL").fetch_one(db).await?;
+    let served = if has_timetable {
+        "EXISTS (SELECT 1 FROM connections c WHERE c.from_station = s.id)"
+    } else {
+        "EXISTS (SELECT 1 FROM travel_times t WHERE t.origin_id = s.id)"
+    };
+    sqlx::query_as::<_, Station>(&format!("SELECT {STATION_COLS} FROM stations s WHERE {served} ORDER BY s.name"))
+        .fetch_all(db)
+        .await
+}
+
+/// Enregistre les temps de trajet calculés depuis une nouvelle origine (cache pour les requêtes SQL).
+pub async fn store_travel_times(
+    db: &PgPool,
+    origin_id: i64,
+    times: &std::collections::HashMap<i64, crate::timetable::BestTime>,
+) -> sqlx::Result<()> {
+    let (mut ids, mut minutes, mut changes, mut deps) = (vec![], vec![], vec![], vec![]);
+    for (&id, t) in times {
+        ids.push(id);
+        minutes.push(t.minutes);
+        changes.push(t.changes);
+        deps.push(crate::timetable::hhmm(t.departure));
+    }
+    sqlx::query(
+        "INSERT INTO travel_times (origin_id, station_id, minutes, nb_changes, example_departure)
+         SELECT $1, * FROM UNNEST($2::bigint[], $3::int[], $4::int[], $5::text[])
+         ON CONFLICT (origin_id, station_id) DO NOTHING",
+    )
+    .bind(origin_id)
+    .bind(ids)
+    .bind(minutes)
+    .bind(changes)
+    .bind(deps)
+    .execute(db)
+    .await?;
+    Ok(())
 }
 
 pub async fn has_travel_times(db: &PgPool, origin_id: i64) -> sqlx::Result<bool> {

@@ -110,7 +110,7 @@ cd frontend && npm install && npm run dev
 
 **Lieux sans nom.** Dans OSM, beaucoup d'aires de jeux, de points de vue ou de coins de pêche n'ont pas de nom : ils reçoivent un nom générique (« Aire de jeux », « Point de vue »). Leur intérêt est fixé à 0,35. Ils ne sont proposés que s'ils répondent à une envie précise (enfants, panorama, pêche) et non à « nature » seule. Ils n'apparaissent pas sur la carte d'ensemble, et la fiche d'une gare permet de les afficher sur demande. La source (OpenStreetMap ou DATAtourisme) est indiquée sur chaque lieu.
 
-`--origins` accepte plusieurs gares, par exemple `"Grenoble,Lyon Part-Dieu"`. Les temps de trajet ne sont calculés que depuis ces gares.
+`--origins` accepte plusieurs gares, par exemple `"Grenoble,Lyon Part-Dieu"`. Les temps de trajet depuis ces gares sont calculés pendant l'ingestion. **N'importe quelle autre gare desservie peut aussi servir de départ.** Ses temps de trajet sont calculés par l'API à la première demande, à partir des horaires chargés en mémoire (même algorithme CSA, départs entre 6 h et 20 h), puis gardés dans `travel_times`. Une nouvelle ingestion GTFS vide ce cache.
 
 ### Brancher un LLM
 
