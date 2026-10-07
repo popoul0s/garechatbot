@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, Map as MlMap } from "maplibre-gl";
-import { categoryOf, CATEGORIES, sourceLabel, formatMinutes, Journey, PoiNearStation, Recommendation, Station } from "../api";
+import { categoryOf, CATEGORIES, PlaceArea, sourceLabel, formatMinutes, Journey, PoiNearStation, Recommendation, Station } from "../api";
 
 /**
  * La carte n'affiche que ce qui sert à l'étape en cours :
@@ -28,6 +28,8 @@ interface Props {
   /** Destination survolée dans la liste : son marqueur est mis en avant (et inversement). */
   highlightId: number | null;
   onHoverStation: (id: number | null) => void;
+  /** Destination sans gare : repérée sur la carte (nom + zone de recherche). */
+  placeArea: PlaceArea | null;
 }
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
@@ -79,6 +81,29 @@ function poiPopupHtml(p: PoiNearStation): string {
   );
 }
 
+/** Cercle géographique (polygone) de `radius` mètres autour d'un point. */
+function circle(lon: number, lat: number, radius: number): GeoJSON.Feature {
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * 2 * Math.PI;
+    pts.push([
+      lon + ((radius / 111_320) * Math.cos(a)) / Math.cos((lat * Math.PI) / 180),
+      lat + (radius / 110_540) * Math.sin(a),
+    ]);
+  }
+  return { type: "Feature", geometry: { type: "Polygon", coordinates: [pts] }, properties: {} };
+}
+
+/** Coins de la zone de recherche d'un lieu sans gare, pour que le cadrage montre tout le cercle. */
+function areaBounds(a: PlaceArea): [number, number][] {
+  const dlat = a.radius_m / 110_540;
+  const dlon = a.radius_m / (111_320 * Math.cos((a.lat * Math.PI) / 180));
+  return [
+    [a.lon - dlon, a.lat - dlat],
+    [a.lon + dlon, a.lat + dlat],
+  ];
+}
+
 function fit(m: MlMap, pts: [number, number][], maxZoom: number) {
   if (pts.length === 0) return;
   const lons = pts.map((p) => p[0]);
@@ -123,6 +148,19 @@ export default function MapView(props: Props) {
       m.addSource("stations", { type: "geojson", data: EMPTY });
       m.addSource("journey", { type: "geojson", data: EMPTY });
       m.addSource("walk", { type: "geojson", data: EMPTY });
+      m.addSource("place-area", { type: "geojson", data: EMPTY });
+      m.addLayer({
+        id: "place-area-fill",
+        type: "fill",
+        source: "place-area",
+        paint: { "fill-color": "#111827", "fill-opacity": 0.06 },
+      });
+      m.addLayer({
+        id: "place-area-line",
+        type: "line",
+        source: "place-area",
+        paint: { "line-color": "#111827", "line-width": 1.5, "line-dasharray": [3, 2], "line-opacity": 0.8 },
+      });
       m.addLayer({
         id: "journey-casing",
         type: "line",
@@ -251,8 +289,25 @@ export default function MapView(props: Props) {
       });
       fit(
         m,
-        [...(originLngLat ? [originLngLat] : []), ...results.map((r) => [r.station.lon, r.station.lat] as [number, number])],
+        [
+          ...(originLngLat ? [originLngLat] : []),
+          ...results.map((r) => [r.station.lon, r.station.lat] as [number, number]),
+          ...(props.placeArea ? areaBounds(props.placeArea) : []),
+        ],
         11,
+      );
+    }
+
+    // destination sans gare (« Herbeys ») : son nom et sa zone de recherche, en résultats comme en fiche
+    const area = mode !== "overview" ? props.placeArea : null;
+    (m.getSource("place-area") as GeoJSONSource).setData(
+      area ? { type: "FeatureCollection", features: [circle(area.lon, area.lat, area.radius_m)] } : EMPTY,
+    );
+    if (area) {
+      addMarker(
+        el("place-marker", `<span class="pin"></span><span class="label">${escapeHtml(area.name)}</span>`, `${area.name} : le lieu demandé (sans gare)`),
+        [area.lon, area.lat],
+        "left",
       );
     }
 
@@ -316,11 +371,16 @@ export default function MapView(props: Props) {
         : [];
       fit(
         m,
-        [[detailStation.lon, detailStation.lat], ...detailPois.map((p) => [p.lon, p.lat] as [number, number]), ...journeyPts],
+        [
+          [detailStation.lon, detailStation.lat],
+          ...detailPois.map((p) => [p.lon, p.lat] as [number, number]),
+          ...journeyPts,
+          ...(props.placeArea ? [[props.placeArea.lon, props.placeArea.lat] as [number, number]] : []),
+        ],
         15,
       );
     }
-  }, [ready, props.mode, props.stations, props.lines, props.results, props.detailStation, props.detailPois, props.journey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, props.mode, props.stations, props.lines, props.results, props.detailStation, props.detailPois, props.journey, props.placeArea]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lieu sélectionné (depuis la liste ou la carte) : on le montre et on affiche sa fiche
   useEffect(() => {
@@ -393,12 +453,28 @@ export default function MapView(props: Props) {
           {props.mode === "results" && (
             <>
               <strong>Destinations proposées</strong>
+              {props.placeArea && (
+                <span>
+                  <i style={{ background: "#111827" }} />
+                  {props.placeArea.name} : lieu demandé, sans gare (cercle : zone des lieux)
+                </span>
+              )}
               <small>Les numéros correspondent à la liste. Cliquez une destination pour voir ses lieux.</small>
             </>
           )}
           {props.mode === "detail" && (
             <>
-              <strong>Lieux autour de {props.detailStation?.name}</strong>
+              <strong>
+                {props.placeArea
+                  ? `Lieux autour de ${props.placeArea.name}, depuis ${props.detailStation?.name}`
+                  : `Lieux autour de ${props.detailStation?.name}`}
+              </strong>
+              {props.placeArea && (
+                <span>
+                  <i style={{ background: "#111827" }} />
+                  {props.placeArea.name} (sans gare)
+                </span>
+              )}
               {presentCats.map((c) => (
                 <span key={c.key}>
                   <i style={{ background: c.color }} />

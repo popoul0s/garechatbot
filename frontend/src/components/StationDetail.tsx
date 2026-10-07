@@ -7,6 +7,7 @@ import {
   formatMinutes,
   Journey,
   PoiNearStation,
+  PlaceArea,
   sourceLabel,
   Station,
   StationService,
@@ -35,7 +36,7 @@ interface Props {
   /** Lieux actuellement listés : la carte affiche exactement les mêmes, avec les mêmes numéros. */
   onVisibleChange: (pois: PoiNearStation[]) => void;
   /** Destination sans gare : les lieux listés sont autour d'elle, à la distance indiquée depuis la gare. */
-  aroundName?: string | null;
+  around?: PlaceArea | null;
 }
 
 /** Un lieu, ou plusieurs lieux de même nom regroupés ("Aire de jeux" x 8). */
@@ -48,6 +49,15 @@ interface Entry {
 }
 
 const PAGE = 12;
+
+/** Distance à vol d'oiseau, affichée en km ou en m. */
+function km(lon1: number, lat1: number, lon2: number, lat2: number): string {
+  const r = (x: number) => (x * Math.PI) / 180;
+  const a =
+    Math.sin(r(lat2 - lat1) / 2) ** 2 + Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(r(lon2 - lon1) / 2) ** 2;
+  const d = 6_371_000 * 2 * Math.asin(Math.sqrt(a));
+  return d < 1000 ? `${Math.round(d / 50) * 50} m` : `${(d / 1000).toFixed(1).replace(".", ",")} km`;
+}
 
 const nowHHMM = () => {
   const d = new Date();
@@ -246,8 +256,8 @@ export default function StationDetail(props: Props) {
             </p>
           )}
           <p className="muted small">
-            {props.aroundName
-              ? `Lieux autour de ${props.aroundName} (sans gare), avec le temps à pied depuis cette gare. Numérotés comme sur la carte.`
+            {props.around
+              ? `Lieux autour de ${props.around.name} (sans gare, repéré par l'étiquette noire sur la carte), avec le temps à pied depuis cette gare et la distance au village.`
               : "Lieux à moins de 30 min à pied, numérotés comme sur la carte."}
           </p>
           {counts.size > 1 && (
@@ -317,6 +327,12 @@ export default function StationDetail(props: Props) {
                         {c.label}
                         {hasSearch && e.matches && <span className="match"> · correspond à votre recherche</span>}
                         <span className="source"> · {sourceLabel(p.source)}</span>
+                    {props.around && (
+                      <span className="from-place">
+                        {" "}
+                        · {km(p.lon, p.lat, props.around.lon, props.around.lat)} de {props.around.name}
+                      </span>
+                    )}
                       </span>
                       {focusedPoiId === p.id && p.description && (
                         <span className="small">{p.description.slice(0, 220)}</span>

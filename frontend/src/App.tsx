@@ -282,7 +282,7 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
         if (isMobile()) setSheet("peek");
       }}
       onVisibleChange={setVisiblePois}
-      aroundName={outcome?.place_area?.name ?? null}
+      around={outcome?.place_area ?? null}
     />
   ) : (
     <>
@@ -425,6 +425,7 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
             visible
             highlightId={hovered}
             onHoverStation={setHovered}
+            placeArea={outcome?.place_area ?? null}
           />
         </section>
       </main>
