@@ -41,7 +41,7 @@ pub struct PlaceArea {
 }
 
 /// Rayon autour d'une commune sans gare dans lequel on cherche des lieux.
-pub const AREA_RADIUS_M: f64 = 4_000.0;
+pub const AREA_RADIUS_M: f64 = 2_000.0;
 
 /// Temps de trajet depuis une gare : calculés à la première demande à partir des horaires en mémoire,
 /// puis gardés en base. Toute gare desservie peut ainsi servir de point de départ.
