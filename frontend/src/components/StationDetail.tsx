@@ -1,10 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { categoryOf, CATEGORIES, formatMinutes, Journey, PoiNearStation, sourceLabel, Station, TAG_LABELS } from "../api";
+import {
+  categoryOf,
+  CATEGORIES,
+  formatMinutes,
+  Journey,
+  PoiNearStation,
+  sourceLabel,
+  Station,
+  StationService,
+  StationTraffic,
+  TAG_LABELS,
+} from "../api";
+import StationInfo from "./StationInfo";
 import Journeys from "./Journeys";
 
 interface Props {
   station: Station;
   pois: PoiNearStation[];
+  services: StationService[];
+  traffic: StationTraffic | null;
   travel: { minutes: number | null; nb_changes: number | null } | null;
   originName: string | null;
   originId: number | null;
@@ -147,6 +161,8 @@ export default function StationDetail(props: Props) {
         selected={props.journey}
         onSelect={props.onSelectJourney}
       />
+
+      <StationInfo pmr={station.pmr} equipments={station.equipments} services={props.services} traffic={props.traffic} />
 
       <button className="primary wide" onClick={props.onAsk}>
         Poser une question sur cette gare

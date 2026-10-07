@@ -157,7 +157,40 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
         }
     }
 
+    // Question sur une gare précise : ses infos pratiques deviennent des faits vérifiables pour la réponse.
+    if let Some(a) = &around {
+        let facts = station_facts(state, a.id).await?;
+        match outcome.recommendations.iter_mut().find(|r| r.station.id == a.id) {
+            Some(r) => r.facts.extend(facts),
+            None if !facts.is_empty() => {
+                outcome.notes.push(format!("Infos pratiques de la gare {} : {}.", a.name, facts.join(" ; ")))
+            }
+            None => {}
+        }
+    }
+
     Ok(outcome)
+}
+
+/// Infos pratiques d'une gare sous forme de faits (trafic GTFS + services SNCF / OSM).
+pub async fn station_facts(state: &AppState, station_id: i64) -> AppResult<Vec<String>> {
+    let mut facts = Vec::new();
+    if let Some(t) = state.timetable.station_traffic(station_id) {
+        facts.push(format!(
+            "{} trains au départ par jour (premier {}, dernier {}), {} gares en direct",
+            t.departures,
+            t.first_departure.unwrap_or_default(),
+            t.last_departure.unwrap_or_default(),
+            t.direct_destinations
+        ));
+    }
+    for s in db::station_services(&state.db, station_id).await? {
+        facts.push(match s.detail {
+            Some(d) => format!("{} : {d} (source {})", s.label, s.source),
+            None => format!("{} (source {})", s.label, s.source),
+        });
+    }
+    Ok(facts)
 }
 
 /// Rayon dans lequel on cherche une gare autour d'une commune sans gare.

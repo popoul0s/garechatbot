@@ -33,6 +33,31 @@ export const SOURCE_LABELS: Record<string, string> = {
 };
 export const sourceLabel = (s: string) => SOURCE_LABELS[s] ?? s;
 
+/** Info pratique d'une gare (SNCF Open Data ou OpenStreetMap). */
+export interface StationService {
+  category: string;
+  label: string;
+  detail: string | null;
+  source: string;
+}
+
+/** Trafic de la journée type, calculé depuis les horaires GTFS. */
+export interface StationTraffic {
+  departures: number;
+  first_departure: string | null;
+  last_departure: string | null;
+  direct_destinations: number;
+  directions: string[];
+  lines: string[];
+}
+
+export interface StationDetailData {
+  station: Station;
+  pois: PoiNearStation[];
+  services: StationService[];
+  traffic: StationTraffic | null;
+}
+
 export interface PoiNearStation extends Poi {
   walk_minutes: number;
   distance_m: number;
@@ -173,7 +198,7 @@ export const api = {
   search: (criteria: Criteria) => post<SearchOutcome>("/api/search", criteria),
   searchStations: (q: string) => get<Station[]>(`/api/stations?q=${encodeURIComponent(q)}`),
   station: (id: number, maxWalk = 30) =>
-    get<{ station: Station; pois: PoiNearStation[] }>(`/api/stations/${id}?max_walk=${maxWalk}`),
+    get<StationDetailData>(`/api/stations/${id}?max_walk=${maxWalk}`),
   mapStations: (origin: string) =>
     get<GeoJSON.FeatureCollection>(`/api/map/stations?origin=${encodeURIComponent(origin)}`),
   mapLines: () => get<GeoJSON.FeatureCollection>("/api/map/lines"),

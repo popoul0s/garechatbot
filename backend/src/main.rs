@@ -44,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
             "impossible de joindre PostgreSQL : Docker Desktop est-il lancé et `docker compose up -d db` exécuté ? \
              (vérifier aussi DATABASE_URL dans .env)",
         )?;
+    db::ensure_services_table(&db).await.context("création de la table station_services")?;
     let llm = cfg.llm.clone().map(llm::LlmClient::new).transpose()?;
     match &llm {
         Some(l) => tracing::info!(model = l.model(), "LLM configuré"),

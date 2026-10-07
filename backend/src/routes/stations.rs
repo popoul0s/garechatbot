@@ -3,7 +3,8 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::db;
-use crate::domain::models::{PoiNearStation, ReachableStation, Station};
+use crate::domain::models::{PoiNearStation, ReachableStation, Station, StationService};
+use crate::timetable::StationTraffic;
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
@@ -32,6 +33,10 @@ pub struct DetailParams {
 pub struct StationDetail {
     station: Station,
     pois: Vec<PoiNearStation>,
+    /// Infos pratiques (SNCF Open Data, OpenStreetMap).
+    services: Vec<StationService>,
+    /// Trafic de la journée type (horaires GTFS).
+    traffic: Option<StationTraffic>,
 }
 
 /// GET /api/stations/{id}?max_walk=30
@@ -44,7 +49,9 @@ pub async fn detail(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("gare {id}")))?;
     let pois = db::pois_near_station(&st.db, id, p.max_walk.unwrap_or(30), None, 200).await?;
-    Ok(Json(StationDetail { station, pois }))
+    let services = db::station_services(&st.db, id).await?;
+    let traffic = st.timetable.station_traffic(id);
+    Ok(Json(StationDetail { station, pois, services, traffic }))
 }
 
 #[derive(Deserialize)]

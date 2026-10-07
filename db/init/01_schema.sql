@@ -22,6 +22,17 @@ CREATE TABLE IF NOT EXISTS stations (
 CREATE INDEX IF NOT EXISTS stations_geom_idx ON stations USING GIST (geom);
 CREATE INDEX IF NOT EXISTS stations_name_trgm_idx ON stations USING GIN (name gin_trgm_ops);
 
+-- Services et infos pratiques des gares (toilettes, wifi, horaires d'ouverture, parking vélos...)
+-- Une ligne par gare, catégorie et source. Rempli par ingestion/services.py.
+CREATE TABLE IF NOT EXISTS station_services (
+    station_id  BIGINT NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+    category    TEXT NOT NULL,                 -- clé stable : toilettes, wifi, horaires, velo...
+    label       TEXT NOT NULL,                 -- libellé affiché
+    detail      TEXT,                          -- précision : "gratuites", "Lun-Ven 05:30-21:00"...
+    source      TEXT NOT NULL,                 -- "SNCF Open Data" ou "OpenStreetMap"
+    PRIMARY KEY (station_id, category, source)
+);
+
 -- Lignes ferroviaires (tracé simplifié issu du GTFS)
 CREATE TABLE IF NOT EXISTS lines (
     id          SERIAL PRIMARY KEY,

@@ -86,6 +86,7 @@ python run_all.py rail          # tracé réel des voies (SNCF Open Data, ou --r
 python run_all.py sncf
 python run_all.py osm
 python run_all.py lakes         # rives des lacs (si l'import OSM date d'avant cette étape)
+python run_all.py services --osm-limit 220   # infos pratiques des gares (toilettes, wifi, horaires, vélos, bus...)
 python run_all.py datatourisme --datatourisme <archive ou dossier du flux>
 python run_all.py stats
 cd ..
@@ -107,6 +108,13 @@ cd frontend && npm install && npm run dev
 | OpenStreetMap | API Overpass publique | Environ 2 s de pause entre deux lots de gares. `--osm-limit 5` permet un test rapide. Les lacs sont placés sur la rive la plus proche de chaque gare, et non à leur centre (le centre du lac du Bourget est à plus de 3 km de la gare d'Aix-les-Bains). |
 | API Géo (geo.api.gouv.fr) | Appelée par l'API au moment de la recherche | Localise une commune demandée comme destination (« pêcher à Herbeys »). Si elle n'a pas de gare, on cherche autour des gares à moins de 12 km. Gratuite, sans clé. |
 | DATAtourisme | diffuseur.datatourisme.fr | Créer un compte, puis un flux « Auvergne-Rhône-Alpes », format JSON-LD (un fichier par objet). **Le faire tôt : la génération du flux prend du temps.** Passer le zip téléchargé, ou l'URL de téléchargement du flux, à `--datatourisme`. Les itinéraires y gagnent leur longueur et leur durée. |
+
+**Infos pratiques des gares** (`python run_all.py services`) :
+- **SNCF Open Data** : toilettes (gratuites ou payantes), horaires d'ouverture, Wi-Fi, fréquentation annuelle, assistance Accès Plus, ascenseurs, escaliers mécaniques, piano, défibrillateur, consigne, objets trouvés, stationnement vélo, équipements d'accessibilité. Chaque jeu est cherché par ses identifiants connus, puis dans le catalogue par mots-clés. `--inspect` affiche les jeux trouvés et leurs champs.
+- **OpenStreetMap**, à moins de 200 m de la gare : arrêts de bus et de tram, taxis, parkings vélo et voiture, vélos en libre-service, autopartage, cafés, commerces, distributeur, eau potable, pharmacie, office de tourisme. L'étape reprend là où elle s'est arrêtée ; `--osm-restart` recommence tout, `--no-osm` saute cette partie.
+- **Horaires GTFS**, calculés par l'API : trains par jour, premier et dernier départ, gares desservies en direct, directions, lignes.
+
+Ces infos s'affichent dans la fiche de la gare. Lors d'une question posée sur une gare, elles sont transmises à l'IA comme faits vérifiables.
 
 **Lieux sans nom.** Dans OSM, beaucoup d'aires de jeux, de points de vue ou de coins de pêche n'ont pas de nom : ils reçoivent un nom générique (« Aire de jeux », « Point de vue »). Leur intérêt est fixé à 0,35. Ils ne sont proposés que s'ils répondent à une envie précise (enfants, panorama, pêche) et non à « nature » seule. Ils n'apparaissent pas sur la carte d'ensemble, et la fiche d'une gare permet de les afficher sur demande. La source (OpenStreetMap ou DATAtourisme) est indiquée sur chaque lieu.
 

@@ -7,6 +7,7 @@ Exemples :
     python run_all.py lakes --osm-limit 220
     python run_all.py sncf --inspect
     python run_all.py link
+    python run_all.py services --osm-limit 220   # toilettes, wifi, horaires, vélos, taxis...
     python run_all.py stats
 """
 
@@ -19,6 +20,7 @@ import gtfs
 import link
 import osm
 import rail
+import services
 import sncf
 from common import connect
 
@@ -29,9 +31,12 @@ DEFAULT_ORIGINS = "Grenoble"
 
 def stats() -> None:
     with connect() as conn, conn.cursor() as cur:
-        for table in ["stations", "lines", "travel_times", "pois", "station_poi"]:
+        for table in ["stations", "lines", "travel_times", "pois", "station_poi", "station_services"]:
+            cur.execute("SELECT to_regclass(%s) IS NOT NULL", (table,))
+            if not cur.fetchone()[0]:
+                continue
             cur.execute(f"SELECT count(*) FROM {table}")
-            print(f"  {table:<13} {cur.fetchone()[0]:>7}")
+            print(f"  {table:<16} {cur.fetchone()[0]:>7}")
         cur.execute("SELECT source, count(*) FROM pois GROUP BY source ORDER BY source")
         for source, n in cur.fetchall():
             print(f"  pois[{source}] {n:>7}")
@@ -41,7 +46,7 @@ def stats() -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Ingestion GareChatBot")
-    p.add_argument("step", choices=["all", "gtfs", "rail", "sncf", "osm", "lakes", "datatourisme", "link", "stats"])
+    p.add_argument("step", choices=["all", "gtfs", "rail", "sncf", "osm", "lakes", "datatourisme", "link", "services", "stats"])
     p.add_argument("--gtfs", default=DEFAULT_GTFS, help="URL ou chemin du GTFS ferroviaire")
     p.add_argument("--origins", default=DEFAULT_ORIGINS, help="gares d'origine, séparées par des virgules")
     p.add_argument("--datatourisme", help="URL, archive .zip ou dossier du flux DATAtourisme")
@@ -49,7 +54,8 @@ def main() -> None:
     p.add_argument("--osm-restart", action="store_true", help="osm : retraiter aussi les gares déjà importées")
     p.add_argument("--rail", help="rail : fichier GeoJSON du réseau ferré (par défaut, téléchargé depuis SNCF Open Data)")
     p.add_argument("--rail-osm", action="store_true", help="rail : utiliser OpenStreetMap au lieu de SNCF Open Data")
-    p.add_argument("--inspect", action="store_true", help="sncf : afficher les champs des jeux SNCF")
+    p.add_argument("--inspect", action="store_true", help="sncf / services : afficher les jeux SNCF et leurs champs")
+    p.add_argument("--no-osm", action="store_true", help="services : seulement SNCF Open Data, sans OpenStreetMap")
     a = p.parse_args()
 
     if a.step in ("all", "gtfs"):
@@ -82,6 +88,8 @@ def main() -> None:
             print("DATAtourisme : aucun flux fourni (--datatourisme), étape ignorée")
     if a.step in ("all", "datatourisme", "osm", "lakes", "link"):
         link.run()
+    if a.step in ("all", "services"):
+        services.run(a.osm_limit, a.osm_restart, a.inspect, a.no_osm)
     if a.step in ("all", "stats"):
         stats()
 

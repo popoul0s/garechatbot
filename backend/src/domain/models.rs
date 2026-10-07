@@ -28,6 +28,15 @@ pub struct Poi {
     pub generic: bool,
 }
 
+/// Service ou info pratique d'une gare (toilettes, wifi, horaires d'ouverture, parking vélos...).
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct StationService {
+    pub category: String,
+    pub label: String,
+    pub detail: Option<String>,
+    pub source: String,
+}
+
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct PoiNearStation {
     #[sqlx(flatten)]

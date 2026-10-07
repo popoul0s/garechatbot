@@ -19,6 +19,21 @@ const TT_FIRST_DEPARTURE: i32 = 6 * 60;
 const TT_LAST_DEPARTURE: i32 = 20 * 60;
 const TT_MAX_TRAVEL: i32 = 240;
 
+/// Trafic d'une gare sur la journée type, calculé à partir des horaires GTFS.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct StationTraffic {
+    /// Trains au départ de la gare dans la journée.
+    pub departures: usize,
+    pub first_departure: Option<String>,
+    pub last_departure: Option<String>,
+    /// Nombre de gares atteignables sans correspondance.
+    pub direct_destinations: usize,
+    /// Principales directions (terminus), les plus fréquentes d'abord.
+    pub directions: Vec<String>,
+    /// Lignes desservant la gare.
+    pub lines: Vec<String>,
+}
+
 /// Meilleur temps de trajet vers une gare depuis une origine, sur la journée type.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BestTime {
@@ -193,6 +208,59 @@ impl Timetable {
             lon: s.map_or(0.0, |s| s.lon),
             lat: s.map_or(0.0, |s| s.lat),
         }
+    }
+
+    /// Trafic au départ d'une gare : nombre de trains, premier et dernier départ, directions, lignes.
+    pub fn station_traffic(&self, station: i64) -> Option<StationTraffic> {
+        // train -> heure de passage dans la gare
+        let mut boarding: HashMap<u32, i32> = HashMap::new();
+        for c in self.conns.iter().filter(|c| c.from == station) {
+            boarding.entry(c.trip).or_insert(c.dep);
+        }
+        if boarding.is_empty() {
+            return None;
+        }
+        let mut direct = std::collections::HashSet::new();
+        // terminus de chaque train : dernière gare atteinte
+        let mut terminus: HashMap<u32, (i32, i64)> = HashMap::new();
+        for c in &self.conns {
+            if let Some(&t) = boarding.get(&c.trip) {
+                if c.dep >= t {
+                    direct.insert(c.to);
+                    let e = terminus.entry(c.trip).or_insert((c.arr, c.to));
+                    if c.arr >= e.0 {
+                        *e = (c.arr, c.to);
+                    }
+                }
+            }
+        }
+        direct.remove(&station);
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for (trip, (_, to)) in &terminus {
+            let name = self
+                .trips
+                .get(*trip as usize)
+                .and_then(|t| t.headsign.clone())
+                .unwrap_or_else(|| self.stop(*to).name);
+            *counts.entry(name).or_default() += 1;
+        }
+        let mut directions: Vec<(String, usize)> = counts.into_iter().collect();
+        directions.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let mut lines: Vec<String> = boarding
+            .keys()
+            .filter_map(|t| self.trips.get(*t as usize).and_then(|t| t.route_name.clone()))
+            .collect();
+        lines.sort();
+        lines.dedup();
+        let deps = boarding.values();
+        Some(StationTraffic {
+            departures: boarding.len(),
+            first_departure: deps.clone().min().map(|&m| hhmm(m)),
+            last_departure: deps.max().map(|&m| hhmm(m)),
+            direct_destinations: direct.len(),
+            directions: directions.into_iter().take(6).map(|(n, _)| n).collect(),
+            lines: lines.into_iter().take(12).collect(),
+        })
     }
 
     /// Durée minimale vers chaque gare depuis `origin`, en essayant chaque départ de la journée
@@ -413,6 +481,19 @@ mod tests {
             .map(|(id, n)| (id, StationInfo { name: n.into(), lon: 0.0, lat: 0.0 }))
             .collect();
         Timetable::new(conns, trips, stations)
+    }
+
+    #[test]
+    fn trafic_d_une_gare() {
+        let t = tt().station_traffic(2).unwrap();
+        // B : train 0 (vers D), 1, 3, 4 (vers C)
+        assert_eq!(t.departures, 4);
+        assert_eq!(t.first_departure.as_deref(), Some("08:31"));
+        assert_eq!(t.last_departure.as_deref(), Some("11:00"));
+        assert_eq!(t.direct_destinations, 2);
+        assert_eq!(t.directions, vec!["C".to_string(), "D".to_string()]);
+        assert_eq!(t.lines, vec!["TER".to_string()]);
+        assert!(tt().station_traffic(3).is_none());
     }
 
     #[test]

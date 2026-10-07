@@ -8,6 +8,7 @@ import {
   PoiNearStation,
   SearchOutcome,
   Station,
+  StationDetailData,
   StationSummary,
 } from "./api";
 import MapView, { MapMode } from "./components/MapView";
@@ -57,7 +58,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [detail, setDetail] = useState<{ station: Station; pois: PoiNearStation[] } | null>(null);
+  const [detail, setDetail] = useState<StationDetailData | null>(null);
   const [askAround, setAskAround] = useState<StationSummary | null>(null);
   const [visiblePois, setVisiblePois] = useState<PoiNearStation[]>([]);
   const [focusedPoi, setFocusedPoi] = useState<number | null>(null);
@@ -196,6 +197,8 @@ export default function App() {
             <StationDetail
               station={detail.station}
               pois={detail.pois}
+              services={detail.services ?? []}
+              traffic={detail.traffic ?? null}
               travel={travelFor(detail.station.id)}
               originName={criteria.origin}
               originId={originId}

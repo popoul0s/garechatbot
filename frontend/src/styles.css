@@ -1037,3 +1037,50 @@ main {
     animation-duration: 2s;
   }
 }
+
+/* Infos pratiques de la gare */
+.station-info {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--surface);
+}
+.station-info > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.station-info p {
+  margin: 6px 0;
+}
+.traffic-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  font-size: 0.9rem;
+}
+.service-group h4 {
+  margin: 10px 0 4px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.services {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+.services li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.service-icon {
+  width: 1.4em;
+  text-align: center;
+  flex: none;
+}

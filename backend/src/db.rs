@@ -3,7 +3,7 @@
 use sqlx::PgPool;
 
 use crate::domain::criteria::Criteria;
-use crate::domain::models::{CandidateRow, Poi, PoiNearStation, ReachableStation, Station};
+use crate::domain::models::{CandidateRow, Poi, PoiNearStation, ReachableStation, Station, StationService};
 
 const STATION_COLS: &str = "s.id, s.uic, s.name, s.city, s.lon, s.lat, s.pmr, s.equipments";
 /// `interest` : intérêt touristique du lieu (0..1), dérivé de sa catégorie d'origine.
@@ -55,6 +55,30 @@ pub async fn resolve_station(db: &PgPool, name: &str) -> sqlx::Result<Option<Sta
     ))
     .bind(name)
     .fetch_optional(db)
+    .await
+}
+
+/// Table des services créée au démarrage : l'API fonctionne même si l'étape `services` n'a pas tourné.
+pub async fn ensure_services_table(db: &PgPool) -> sqlx::Result<()> {
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS station_services (
+            station_id BIGINT NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+            category TEXT NOT NULL, label TEXT NOT NULL, detail TEXT, source TEXT NOT NULL,
+            PRIMARY KEY (station_id, category, source))",
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub async fn station_services(db: &PgPool, station_id: i64) -> sqlx::Result<Vec<StationService>> {
+    sqlx::query_as::<_, StationService>(
+        "SELECT category, label, detail, source FROM station_services
+         WHERE station_id = $1 AND category <> '_aucun'
+         ORDER BY source = 'SNCF Open Data' DESC, category",
+    )
+    .bind(station_id)
+    .fetch_all(db)
     .await
 }
 
