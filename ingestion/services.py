@@ -22,7 +22,7 @@ SNCF = "https://ressources.data.sncf.com/api/explore/v2.1"
 SNCF_SOURCE = "SNCF Open Data"
 OSM_SOURCE = "OpenStreetMap"
 OSM_RADIUS_M = 200
-OSM_BATCH = 10
+OSM_BATCH = 25
 
 CREATE = """CREATE TABLE IF NOT EXISTS station_services (
     station_id BIGINT NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
@@ -166,7 +166,7 @@ CATEGORIES: list[tuple[str, str, list[str], str, tuple[str, ...], Callable[[list
 
 
 def fetch(dataset: str, limit: int = -1) -> list[dict]:
-    r = requests.get(f"{SNCF}/catalog/datasets/{dataset}/exports/json", params={"limit": limit}, timeout=180)
+    r = requests.get(f"{SNCF}/catalog/datasets/{dataset}/exports/json", params={"limit": limit}, timeout=(10, 120))
     r.raise_for_status()
     return r.json()
 
@@ -181,7 +181,7 @@ def find_dataset(ids: list[str], search: str, title_words: tuple[str, ...]) -> s
         except requests.RequestException:
             pass
     try:
-        r = requests.get(f"{SNCF}/catalog/datasets", params={"where": f'"{search}"', "limit": 20}, timeout=60)
+        r = requests.get(f"{SNCF}/catalog/datasets", params={"where": f'"{search}"', "limit": 10}, timeout=(10, 30))
         r.raise_for_status()
         results = r.json().get("results", [])
     except requests.RequestException:
@@ -200,17 +200,19 @@ def find_dataset(ids: list[str], search: str, title_words: tuple[str, ...]) -> s
 
 def run_sncf(cur, uic_to_id: dict[str, int], inspect: bool = False) -> None:
     for key, label, ids, search, words, summarize in CATEGORIES:
+        print(f"  {label:<45} recherche du jeu SNCF…", end="\r", flush=True)
         ds = find_dataset(ids, search, words)
         if not ds:
-            print(f"  {label:<45} jeu introuvable, ignoré")
+            print(f"  {label:<45} jeu introuvable, ignoré".ljust(110))
             continue
         if inspect:
-            print(f"  {label:<45} {ds} : {sorted(fetch(ds, 1)[0].keys())}")
+            print(f"  {label:<45} {ds} : {sorted(fetch(ds, 1)[0].keys())}".ljust(110))
             continue
+        print(f"  {label:<45} téléchargement de {ds}…", end="\r", flush=True)
         try:
             recs = fetch(ds)
         except requests.RequestException as e:
-            print(f"  {label:<45} {ds} en échec ({e}), ignoré")
+            print(f"  {label:<45} {ds} en échec ({e}), ignoré".ljust(110))
             continue
         per_station: dict[int, list[dict]] = defaultdict(list)
         for rec in recs:
@@ -230,7 +232,7 @@ def run_sncf(cur, uic_to_id: dict[str, int], inspect: bool = False) -> None:
                 (sid, key, label, summarize(rs), SNCF_SOURCE),
             )
             n += 1
-        print(f"  {label:<45} {n:>4} gares ({ds})")
+        print(f"  {label:<45} {n:>4} gares ({ds})".ljust(110))
 
 
 # ---------- OpenStreetMap : ce qu'il y a autour de la gare ----------
@@ -257,20 +259,40 @@ OSM_SERVICES = [
 ]
 
 
+# Filtres regroupés par clé : 6 clauses par gare au lieu d'une par service (bien plus rapide pour Overpass).
+OSM_CLAUSES = [
+    'nwr["amenity"~"^(toilets|bicycle_parking|bicycle_rental|taxi|parking|car_sharing|car_rental|cafe|restaurant'
+    '|fast_food|bar|atm|drinking_water|luggage_locker|pharmacy)$"]',
+    'node["highway"="bus_stop"]',
+    'node["railway"="tram_stop"]',
+    'nwr["shop"~"^(bakery|newsagent|convenience|supermarket)$"]',
+    'nwr["vending"~"public_transport_tickets"]',
+    'nwr["tourism"="information"]["information"="office"]',
+]
+
+
 def osm_query(stations: list[tuple[int, float, float]]) -> list[dict]:
+    # un petit carré par gare (filtre bbox, rapide) ; le rayon exact est vérifié ensuite
+    dlat, dlon = OSM_RADIUS_M / 111_000, OSM_RADIUS_M / 78_000
     body = "".join(
-        f"nwr{flt}(around:{OSM_RADIUS_M},{lat:.6f},{lon:.6f});" for _, lon, lat in stations for _, _, flt, _ in OSM_SERVICES
+        f"{c}({lat - dlat:.5f},{lon - dlon:.5f},{lat + dlat:.5f},{lon + dlon:.5f});"
+        for _, lon, lat in stations
+        for c in OSM_CLAUSES
     )
-    q = f"[out:json][timeout:90];({body});out center tags;"
+    q = f"[out:json][timeout:60];({body});out center tags;"
     for attempt in range(len(OVERPASS_URLS) * 2):
         url = OVERPASS_URLS[attempt % len(OVERPASS_URLS)]
         try:
-            r = requests.post(url, data={"data": q}, headers=HEADERS, timeout=120)
+            r = requests.post(url, data={"data": q}, headers=HEADERS, timeout=(10, 90))
             if r.ok:
                 return r.json().get("elements", [])
-            time.sleep(60 if r.status_code == 429 else 10)
+            if r.status_code == 429:
+                print("    serveur saturé (429), pause de 30 s…", flush=True)
+                time.sleep(30)
+            else:
+                time.sleep(5)
         except requests.RequestException:
-            time.sleep(5)
+            time.sleep(3)
     raise RuntimeError("Overpass indisponible")
 
 
@@ -335,7 +357,7 @@ def run_osm(cur, conn, limit: int | None, restart: bool) -> None:
                     (sid, OSM_SOURCE),
                 )
         conn.commit()
-        time.sleep(2)
+        time.sleep(1)
 
 
 def run(limit: int | None = None, restart: bool = False, inspect: bool = False, skip_osm: bool = False) -> None:
