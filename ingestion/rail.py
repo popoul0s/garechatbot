@@ -27,7 +27,7 @@ SNCF_RFN_URL = (
     "https://ressources.data.sncf.com/api/explore/v2.1/catalog/datasets/formes-des-lignes-du-rfn/exports/geojson"
 )
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-HEADERS = {"User-Agent": "GareChatBot/0.1 (projet etudiant tourisme ferroviaire AURA)"}
+HEADERS = {"User-Agent": "Aiguillage/0.1 (projet etudiant tourisme ferroviaire AURA)"}
 
 SNAP_MAX_M = 1500  # distance max gare -> voie
 JOIN_MAX_M = 40  # raccord entre deux tronçons de voie qui ne partagent pas exactement un sommet

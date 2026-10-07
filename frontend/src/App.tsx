@@ -43,7 +43,7 @@ const SUGGESTIONS = [
 
 const isMobile = () => window.matchMedia("(max-width: 800px)").matches;
 
-export default function App() {
+export default function App({ initialQuery = null }: { initialQuery?: string | null }) {
   const [mobileTab, setMobileTab] = useState<MobileTab>("search");
   const [origins, setOrigins] = useState<Station[]>([]);
   const [stationsGeo, setStationsGeo] = useState<GeoJSON.FeatureCollection | null>(null);
@@ -159,6 +159,16 @@ export default function App() {
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
+  // demande saisie sur la page d'accueil : lancée une seule fois à l'ouverture
+  const started = useRef(false);
+  useEffect(() => {
+    document.title = "Aiguillage";
+    if (initialQuery && !started.current) {
+      started.current = true;
+      ask(initialQuery);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const reset = () => {
     if (sessionId) api.resetChat(sessionId).catch(console.error);
     setSessionId(null);
@@ -187,10 +197,15 @@ export default function App() {
   return (
     <div className={`app tab-${mobileTab}`}>
       <header>
-        <button className="brand" onClick={reset} title="Nouvelle recherche">
-          <span aria-hidden>🚆</span> GareChatBot
-        </button>
+        <a className="brand" href="#/" title="Retour à l'accueil">
+          Aiguillage
+        </a>
         <span className="tagline">Sorties en train en Auvergne-Rhône-Alpes</span>
+        {(outcome || detail) && (
+          <button className="new-search" onClick={reset}>
+            Nouvelle recherche
+          </button>
+        )}
       </header>
 
       <main>

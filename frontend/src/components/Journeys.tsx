@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Train } from "@phosphor-icons/react";
 import { api, formatMinutes, Journey, JourneysResponse } from "../api";
 
 interface Props {
@@ -121,7 +122,7 @@ export default function Journeys({ originId, originName, stationId, stationName,
                         </p>
                       )}
                       <p className="leg-train">
-                        🚆 <strong>{trainLabel(l)}</strong>
+                        <Train size={15} weight="bold" aria-hidden className="ico" /> <strong>{trainLabel(l)}</strong>
                         {l.headsign && <span className="muted"> direction {l.headsign}</span>}
                       </p>
                       <p className="leg-times">

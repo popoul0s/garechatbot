@@ -1,3 +1,4 @@
+import { PersonSimpleWalk, Star } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   categoryOf,
@@ -136,7 +137,7 @@ export default function StationDetail(props: Props) {
       <h2>{station.name}</h2>
       <p className="muted">
         {travel?.minutes != null && originName
-          ? `🚆 ${formatMinutes(travel.minutes)} depuis ${originName}${
+          ? `${formatMinutes(travel.minutes)} de train depuis ${originName}${
               travel.nb_changes ? `, ${travel.nb_changes} correspondance${travel.nb_changes > 1 ? "s" : ""}` : ", direct"
             }`
           : "Temps de trajet non calculé depuis votre gare de départ"}
@@ -217,10 +218,16 @@ export default function StationDetail(props: Props) {
                       {p.name}
                       {e.count > 1 && <span className="muted"> · {e.count} sur place</span>}
                     </strong>
-                    <span className="walk">🚶 {p.walk_minutes} min</span>
+                    <span className="walk">
+                      <PersonSimpleWalk size={14} aria-hidden className="ico" /> {p.walk_minutes} min
+                    </span>
                   </span>
                   <span className="muted small">
-                    {p.interest >= 1 && <span className="star">★ Site remarquable · </span>}
+                    {p.interest >= 1 && (
+                      <span className="star">
+                        <Star size={12} weight="fill" aria-hidden /> Site remarquable ·{" "}
+                      </span>
+                    )}
                     {c.label}
                     {hasSearch && e.matches && <span className="match"> · correspond à votre recherche</span>}
                     <span className="source"> · {sourceLabel(p.source)}</span>

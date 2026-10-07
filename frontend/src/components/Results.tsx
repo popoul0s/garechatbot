@@ -1,3 +1,4 @@
+import { Check, MapPin, PersonSimpleWalk, Train, X } from "@phosphor-icons/react";
 import { Answer, Criteria, formatMinutes, Recommendation, SearchOutcome, TAG_LABELS } from "../api";
 
 interface Props {
@@ -53,14 +54,22 @@ function Card({ r, rank, explanation, wanted, onOpen }: {
         <span className="card-body">
           <span className="card-title">{r.station.name}</span>
           <span className="facts">
-            {r.travel_minutes === 0 && <span>📍 Sur place, sans train</span>}
+            {r.travel_minutes === 0 && (
+              <span>
+                <MapPin size={15} aria-hidden className="ico" /> Sur place, sans train
+              </span>
+            )}
             {r.travel_minutes !== null && r.travel_minutes > 0 && (
               <span>
-                🚆 {formatMinutes(r.travel_minutes)}
+                <Train size={15} aria-hidden className="ico" /> {formatMinutes(r.travel_minutes)}
                 {r.nb_changes ? `, ${r.nb_changes} correspondance${r.nb_changes > 1 ? "s" : ""}` : ", direct"}
               </span>
             )}
-            {Number.isFinite(nearest) && <span>🚶 {nearest} min jusqu'au premier lieu</span>}
+            {Number.isFinite(nearest) && (
+              <span>
+                <PersonSimpleWalk size={15} aria-hidden className="ico" /> {nearest} min jusqu'au premier lieu
+              </span>
+            )}
           </span>
           {explanation && <span className="explanation">{explanation}</span>}
           <span className="places">
@@ -70,12 +79,12 @@ function Card({ r, rank, explanation, wanted, onOpen }: {
             <span className="tags">
               {matched.map((t) => (
                 <span key={t} className="tag">
-                  ✓ {TAG_LABELS[t] ?? t}
+                  <Check size={12} weight="bold" aria-hidden /> {TAG_LABELS[t] ?? t}
                 </span>
               ))}
               {r.missing_themes.map((t) => (
                 <span key={t} className="tag missing" title="Aucun lieu de ce type à proximité de la gare">
-                  ✗ {TAG_LABELS[t] ?? t}
+                  <X size={12} weight="bold" aria-hidden /> {TAG_LABELS[t] ?? t}
                 </span>
               ))}
             </span>

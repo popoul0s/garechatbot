@@ -1,3 +1,4 @@
+import { Crosshair } from "@phosphor-icons/react";
 import { useMemo, useRef, useState } from "react";
 import { Station } from "../api";
 
@@ -147,7 +148,7 @@ export default function OriginPicker({ value, stations, onChange }: Props) {
           title="Partir de la gare la plus proche de moi"
           aria-label="Partir de la gare la plus proche de moi"
         >
-          {locating ? "…" : "📍"}
+          {locating ? "…" : <Crosshair size={20} aria-hidden />}
         </button>
       </div>
       {geoError && <p className="note small">{geoError}</p>}

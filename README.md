@@ -1,6 +1,10 @@
-# GareChatBot : découvrir Auvergne-Rhône-Alpes en train
+# Aiguillage : découvrir Auvergne-Rhône-Alpes en train
 
-Prototype de plateforme de tourisme ferroviaire. Deux usages :
+Prototype de plateforme de tourisme ferroviaire. Le nom vient de l'aiguillage, l'appareil qui oriente un train d'une voie à l'autre : l'appli oriente le voyageur vers la bonne gare. (Le code garde son ancien nom technique, `garechatbot`, pour la base et les paquets : inutile de recréer la base.)
+
+L'accueil (`#/`) présente le projet ; l'appli (carte et recherche) est sur `#/app`. Une demande tapée sur l'accueil est lancée directement dans l'appli (`#/app?q=...`).
+
+Deux usages :
 
 - **Explorer** : carte → gare → points d'intérêt ;
 - **Demander** : une question en langage naturel donne des recommandations argumentées, affichées sur la carte.

@@ -20,7 +20,7 @@ OVERPASS_URLS = [
 ]
 # Les serveurs publics refusent (406/429) les requêtes anonymes : on s'identifie.
 HEADERS = {
-    "User-Agent": "GareChatBot/0.1 (projet etudiant tourisme ferroviaire AURA)",
+    "User-Agent": "Aiguillage/0.1 (projet etudiant tourisme ferroviaire AURA)",
     "Accept": "application/json",
 }
 RADIUS_M = 3000

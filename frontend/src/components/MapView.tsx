@@ -69,7 +69,7 @@ function poiPopupHtml(p: PoiNearStation): string {
   const cat = categoryOf(p.tags);
   return (
     `<strong>${escapeHtml(p.name)}</strong><br/>` +
-    `<span style="color:${cat.color}">${cat.label}</span> · 🚶 ${p.walk_minutes} min de la gare` +
+    `<span style="color:${cat.color}">${cat.label}</span> · ${p.walk_minutes} min à pied de la gare` +
     (p.description ? `<p>${escapeHtml(p.description.slice(0, 200))}</p>` : "") +
     (p.url ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noreferrer">Site web</a><br/>` : "") +
     `<span class="source">Source : ${sourceLabel(p.source)}</span>`
@@ -173,7 +173,7 @@ export default function MapView(props: Props) {
         popup.current = new maplibregl.Popup({ closeButton: false, offset: 10 })
           .setLngLat(e.lngLat)
           .setHTML(
-            `<strong>${escapeHtml(String(p.name))}</strong><br/>🚆 ${formatMinutes(Number(p.minutes))}` +
+            `<strong>${escapeHtml(String(p.name))}</strong><br/>${formatMinutes(Number(p.minutes))} de train` +
               `<br/><small>Cliquer pour voir ce qu'il y a autour</small>`,
           )
           .addTo(m);
@@ -279,7 +279,7 @@ export default function MapView(props: Props) {
     if (mode === "detail" && detailStation) {
       // étiquette au-dessus de la gare (ancre en bas) pour ne pas masquer les lieux voisins
       addMarker(
-        el("station-marker", `🚆 ${escapeHtml(detailStation.name)}${escapeHtml(stationTime)}`),
+        el("station-marker", `${escapeHtml(detailStation.name)}${escapeHtml(stationTime)}`),
         [detailStation.lon, detailStation.lat],
         "bottom",
       );

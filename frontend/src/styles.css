@@ -20,7 +20,7 @@
   /* échelle de z-index */
   --z-map-overlay: 10;
   --z-tabs: 20;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Archivo", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.5;
   color: var(--text);
@@ -90,11 +90,28 @@ header {
   background: var(--surface);
 }
 .brand {
-  border: none;
-  background: none;
-  padding: 0;
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-stretch: 125%;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-decoration: none;
+}
+.new-search {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 6px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.new-search:hover {
+  border-color: var(--accent);
+}
+.ico {
+  vertical-align: -2px;
+  flex: none;
 }
 .tagline {
   color: var(--muted);

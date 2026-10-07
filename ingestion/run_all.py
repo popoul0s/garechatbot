@@ -45,7 +45,7 @@ def stats() -> None:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Ingestion GareChatBot")
+    p = argparse.ArgumentParser(description="Ingestion Aiguillage")
     p.add_argument("step", choices=["all", "gtfs", "rail", "sncf", "osm", "lakes", "datatourisme", "link", "services", "stats"])
     p.add_argument("--gtfs", default=DEFAULT_GTFS, help="URL ou chemin du GTFS ferroviaire")
     p.add_argument("--origins", default=DEFAULT_ORIGINS, help="gares d'origine, séparées par des virgules")
