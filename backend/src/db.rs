@@ -43,12 +43,18 @@ pub async fn search_stations(db: &PgPool, q: &str, limit: i64) -> sqlx::Result<V
 /// Résout un nom de ville/gare en gare. Privilégie les gares qui servent d'origine
 /// (temps de trajet pré-calculés), puis le nom exact, puis la similarité.
 pub async fn resolve_station(db: &PgPool, name: &str) -> sqlx::Result<Option<Station>> {
+    // « gieres » trouve « Grenoble Universités Gières » : mot entier n'importe où dans le nom
+    const WORDS: &str = "(' ' || regexp_replace(unaccent(lower(s.name)), '[^a-z0-9]+', ' ', 'g') || ' ')";
+    const Q: &str = "trim(regexp_replace(unaccent(lower($1)), '[^a-z0-9]+', ' ', 'g'))";
     sqlx::query_as::<_, Station>(&format!(
         "SELECT {STATION_COLS} FROM stations s
          WHERE unaccent(lower(s.name)) LIKE unaccent(lower($1)) || '%'
             OR unaccent(lower(coalesce(s.city, ''))) = unaccent(lower($1))
+            OR {WORDS} LIKE '% ' || {Q} || ' %'
             OR similarity(s.name, $1) > 0.4
          ORDER BY (unaccent(lower(s.name)) = unaccent(lower($1))) DESC,
+                  (unaccent(lower(s.name)) LIKE unaccent(lower($1)) || '%') DESC,
+                  ({WORDS} LIKE '% ' || {Q} || ' %') DESC,
                   EXISTS (SELECT 1 FROM travel_times t WHERE t.origin_id = s.id) DESC,
                   similarity(s.name, $1) DESC, length(s.name)
          LIMIT 1"
@@ -147,7 +153,10 @@ pub async fn store_travel_times(
     times: &std::collections::HashMap<i64, crate::timetable::BestTime>,
 ) -> sqlx::Result<()> {
     let (mut ids, mut minutes, mut changes, mut deps) = (vec![], vec![], vec![], vec![]);
-    for (&id, t) in times {
+    // ordre stable des lignes insérées : deux insertions concurrentes verrouillent dans le même ordre
+    let mut sorted: Vec<_> = times.iter().collect();
+    sorted.sort_by_key(|(id, _)| **id);
+    for (&id, t) in sorted {
         ids.push(id);
         minutes.push(t.minutes);
         changes.push(t.changes);
@@ -179,27 +188,38 @@ pub async fn has_travel_times(db: &PgPool, origin_id: i64) -> sqlx::Result<bool>
 /// « Aix-les-Bains - Le Revard »). Comparaison sur le nom de base (avant « - »), sans accents,
 /// casse ni ponctuation. Renvoie (nom de base, clé normalisée), plus long d'abord.
 pub async fn stations_in_text(db: &PgPool, text: &str) -> sqlx::Result<Vec<(String, String)>> {
-    // clé courte en plus de la clé complète : « Gières Gare » est aussi reconnue par « gieres »
+    // Clés reconnues, de la plus sûre à la plus large :
+    // 0. nom de base (« Aix-les-Bains ») ; 1. nom sans suffixe (« Gières Gare » -> « gieres ») ou commune ;
+    // 2. mot distinctif du nom (« Grenoble Universités Gières » -> « gieres »).
+    // Une même clé ne désigne qu'une gare : la plus sûre, puis le nom le plus court (« grenoble » -> Grenoble).
     sqlx::query_as(
         r#"WITH m AS (SELECT ' ' || regexp_replace(unaccent(lower($1)), '[^a-z0-9]+', ' ', 'g') || ' ' AS t),
-                b AS (SELECT DISTINCT split_part(name, ' - ', 1) AS base,
-                             trim(regexp_replace(unaccent(lower(split_part(name, ' - ', 1))), '[^a-z0-9]+', ' ', 'g')) AS key
+                s AS (SELECT name, split_part(name, ' - ', 1) AS base, city,
+                             trim(regexp_replace(unaccent(lower(split_part(name, ' - ', 1))), '[^a-z0-9]+', ' ', 'g')) AS bkey,
+                             trim(regexp_replace(unaccent(lower(name)), '[^a-z0-9]+', ' ', 'g')) AS fkey
                       FROM stations),
-                n AS (SELECT base, key FROM b
-                      UNION
-                      SELECT base, regexp_replace(key, ' (gare|ville|centre|sncf)( .*)?$', '') FROM b)
-           SELECT DISTINCT ON (n.key) n.base, n.key
-           FROM n, m
-           WHERE length(n.key) >= 4 AND position(' ' || n.key || ' ' IN m.t) > 0
-           ORDER BY n.key, length(n.base)"#,
+                n AS (SELECT base AS label, bkey AS key, 0 AS prio, name FROM s
+                      UNION ALL
+                      SELECT base, regexp_replace(bkey, ' (gare|ville|centre|sncf)( .*)?$', ''), 1, name FROM s
+                      UNION ALL
+                      SELECT name, trim(regexp_replace(unaccent(lower(city)), '[^a-z0-9]+', ' ', 'g')), 1, name
+                      FROM s WHERE city IS NOT NULL
+                      UNION ALL
+                      SELECT name, w, 2, name FROM s, regexp_split_to_table(fkey, ' ') AS w
+                      WHERE length(w) >= 5 AND w NOT IN ('gare', 'ville', 'centre', 'universites', 'universite',
+                            'saint', 'sainte', 'grand', 'grande', 'haute', 'basse', 'halte', 'route', 'riviere',
+                            'plage', 'vieux', 'nord', 'ouest', 'champ', 'pont', 'lycee', 'campus', 'zone', 'chateau'))
+           SELECT label, key FROM (
+               SELECT DISTINCT ON (n.key) n.label, n.key
+               FROM n, m
+               WHERE length(n.key) >= 4 AND position(' ' || n.key || ' ' IN m.t) > 0
+               ORDER BY n.key, n.prio, length(n.name)
+           ) found
+           ORDER BY length(key) DESC"#,
     )
     .bind(text)
     .fetch_all(db)
     .await
-    .map(|mut v: Vec<(String, String)>| {
-        v.sort_by_key(|(_, k)| std::cmp::Reverse(k.len()));
-        v
-    })
 }
 
 /// Gare dont le nom ou la commune correspond exactement au lieu demandé.

@@ -31,6 +31,13 @@ pub async fn ensure_travel_times(state: &AppState, origin_id: i64) -> AppResult<
     if db::has_travel_times(&state.db, origin_id).await? {
         return Ok(true);
     }
+    // La carte et la recherche demandent souvent la même nouvelle origine en même temps :
+    // un seul calcul à la fois, et on revérifie une fois le verrou obtenu (sinon : doublons, voire deadlock).
+    static COMPUTING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _guard = COMPUTING.lock().await;
+    if db::has_travel_times(&state.db, origin_id).await? {
+        return Ok(true);
+    }
     if state.timetable.is_empty() {
         return Ok(false);
     }

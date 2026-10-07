@@ -135,7 +135,8 @@ pub async fn chat(State(st): State<AppState>, Json(req): Json<ChatRequest>) -> A
         let same = |name: &str| {
             let n = fold(name).replace(|c: char| !c.is_alphanumeric(), " ");
             let n = n.split_whitespace().collect::<Vec<_>>().join(" ");
-            n.starts_with(&phrase) || phrase.starts_with(&n)
+            // « Grenoble Universités Gières » correspond à « gieres »
+            n.starts_with(&phrase) || phrase.starts_with(&n) || format!(" {n} ").contains(&format!(" {phrase} "))
         };
         if extracted.place.as_deref().is_some_and(same) {
             if extracted.origin.as_deref().is_none_or(same) {
