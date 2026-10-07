@@ -5,6 +5,7 @@ import {
   api,
   Journey,
   Criteria,
+  PlaceArea,
   EMPTY_CRITERIA,
   PoiNearStation,
   SearchOutcome,
@@ -180,11 +181,14 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
   };
 
   // Carte ou liste -> fiche de la gare
+  // destination sans gare : la fiche liste les lieux autour du lieu demandé, pas autour de la gare
+  const placeArea = useRef<PlaceArea | null>(null);
+  placeArea.current = outcome?.place_area ?? null;
   const openStation = useCallback((id: number) => {
     setFocusedPoi(null);
     setJourney(null);
     api
-      .station(id)
+      .station(id, 30, placeArea.current)
       .then((d) => {
         setDetail(d);
         if (isMobile()) setSheet("half");
@@ -278,6 +282,7 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
         if (isMobile()) setSheet("peek");
       }}
       onVisibleChange={setVisiblePois}
+      aroundName={outcome?.place_area?.name ?? null}
     />
   ) : (
     <>

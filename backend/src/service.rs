@@ -8,6 +8,8 @@ use crate::domain::criteria::Criteria;
 use crate::domain::models::{Recommendation, StationSummary};
 use crate::domain::scoring::{self, format_minutes, DEFAULT_MAX_TRAVEL, DEFAULT_MAX_WALK};
 use crate::error::AppResult;
+use crate::geo::Commune;
+use crate::overpass;
 use crate::state::AppState;
 
 pub const MAX_RECOMMENDATIONS: usize = 5;
@@ -25,7 +27,21 @@ pub struct SearchOutcome {
     pub notes: Vec<String>,
     /// Gare de départ absente ou introuvable : l'interface doit la demander avant de chercher.
     pub needs_origin: bool,
+    /// Destination sans gare : les lieux sont cherchés autour d'elle (et non autour des gares).
+    pub place_area: Option<PlaceArea>,
 }
+
+/// Lieu demandé qui n'a pas de gare : centre de la commune et rayon de recherche des lieux.
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaceArea {
+    pub name: String,
+    pub lon: f64,
+    pub lat: f64,
+    pub radius_m: f64,
+}
+
+/// Rayon autour d'une commune sans gare dans lequel on cherche des lieux.
+pub const AREA_RADIUS_M: f64 = 4_000.0;
 
 /// Temps de trajet depuis une gare : calculés à la première demande à partir des horaires en mémoire,
 /// puis gardés en base. Toute gare desservie peut ainsi servir de point de départ.
@@ -76,6 +92,7 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
         recommendations: Vec::new(),
         notes: Vec::new(),
         needs_origin: false,
+        place_area: None,
     };
 
     // Sans origine connue, on ne peut chercher qu'autour d'une gare sélectionnée.
@@ -108,6 +125,9 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
                 PlaceResolution::Stations(ids, note) => {
                     restrict = ids;
                     outcome.notes.extend(note);
+                }
+                PlaceResolution::Area(commune, near) => {
+                    return search_area(state, criteria, outcome, origin_id, commune, near).await;
                 }
                 PlaceResolution::NoStationNearby(note) => {
                     outcome.notes.push(note);
@@ -198,12 +218,62 @@ pub async fn station_facts(state: &AppState, station_id: i64) -> AppResult<Vec<S
     Ok(facts)
 }
 
+/// Destination sans gare (« une balade à Herbeys ») : les lieux sont pris autour de la commune
+/// elle-même, chargés depuis OpenStreetMap si la zone n'a jamais été vue, puis rattachés aux gares
+/// d'accès les plus proches avec la distance réelle du dernier trajet.
+async fn search_area(
+    state: &AppState,
+    criteria: &Criteria,
+    mut outcome: SearchOutcome,
+    origin_id: i64,
+    commune: Commune,
+    near: Vec<db::NearStation>,
+) -> AppResult<SearchOutcome> {
+    if let Err(e) = overpass::ensure_area(&state.db, commune.lon, commune.lat, AREA_RADIUS_M).await {
+        tracing::warn!(error = %e, commune = %commune.nom, "lieux OSM de la zone non chargés");
+    }
+    // temps de train vers les gares d'accès (calculés à la demande si besoin)
+    ensure_travel_times(state, origin_id).await?;
+    let ids: Vec<i64> = near.iter().map(|n| n.station.id).collect();
+    let rows =
+        db::candidates_around_point(&state.db, origin_id, criteria, &ids, commune.lon, commune.lat, AREA_RADIUS_M)
+            .await?;
+    // pas de limite de marche ici : la note de marche est relative au lieu le plus éloigné
+    let max_walk = rows.iter().map(|r| r.walk_minutes).max().unwrap_or(DEFAULT_MAX_WALK);
+    let scoring_criteria = Criteria { max_walk_minutes: Some(max_walk), ..criteria.clone() };
+    outcome.recommendations = scoring::rank(rows, &scoring_criteria, MAX_RECOMMENDATIONS);
+    outcome.applied_max_walk_minutes = max_walk;
+
+    let access = near
+        .iter()
+        .map(|n| format!("{} à {:.1} km", n.station.name, n.distance_m as f64 / 1000.0).replace('.', ","))
+        .collect::<Vec<_>>()
+        .join(", ");
+    outcome.notes.push(if outcome.recommendations.is_empty() {
+        format!(
+            "{} n'a pas de gare, et je ne trouve aucun lieu correspondant dans un rayon de {} km. Gares les plus proches : {access}.",
+            commune.nom,
+            AREA_RADIUS_M as i32 / 1000
+        )
+    } else {
+        format!(
+            "{} n'a pas de gare : voici les lieux autour de {}, avec la gare d'accès la plus pratique ({access}). \
+             Le dernier trajet se fait à pied, à vélo ou en bus.",
+            commune.nom, commune.nom
+        )
+    });
+    outcome.place_area = Some(PlaceArea { name: commune.nom, lon: commune.lon, lat: commune.lat, radius_m: AREA_RADIUS_M });
+    Ok(outcome)
+}
+
 /// Rayon dans lequel on cherche une gare autour d'une commune sans gare.
 const PLACE_RADIUS_M: f64 = 12_000.0;
 
 enum PlaceResolution {
     /// Gares à utiliser, avec une explication éventuelle pour l'utilisateur.
     Stations(Vec<i64>, Option<String>),
+    /// Commune sans gare : on cherche autour d'elle, avec ses gares d'accès les plus proches.
+    Area(Commune, Vec<db::NearStation>),
     NoStationNearby(String),
     Unknown,
     GeoUnavailable,
@@ -230,13 +300,5 @@ async fn resolve_place(state: &AppState, place: &str) -> AppResult<PlaceResoluti
             PLACE_RADIUS_M as i32 / 1000
         )));
     }
-    let list = near
-        .iter()
-        .map(|n| format!("{} ({:.1} km)", n.station.name, n.distance_m as f64 / 1000.0).replace('.', ","))
-        .collect::<Vec<_>>()
-        .join(", ");
-    Ok(PlaceResolution::Stations(
-        near.iter().map(|n| n.station.id).collect(),
-        Some(format!("{} n'a pas de gare : je cherche autour des gares les plus proches : {list}.", commune.nom)),
-    ))
+    Ok(PlaceResolution::Area(commune, near))
 }

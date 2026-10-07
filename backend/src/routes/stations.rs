@@ -27,6 +27,9 @@ pub async fn origins(State(st): State<AppState>) -> AppResult<Json<Vec<Station>>
 #[derive(Deserialize)]
 pub struct DetailParams {
     max_walk: Option<i32>,
+    /// Lieu sans gare demandé : on liste les lieux autour de ce point (et non autour de la gare).
+    around_lon: Option<f64>,
+    around_lat: Option<f64>,
 }
 
 #[derive(Serialize)]
@@ -48,7 +51,10 @@ pub async fn detail(
     let station = db::get_station(&st.db, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("gare {id}")))?;
-    let pois = db::pois_near_station(&st.db, id, p.max_walk.unwrap_or(30), None, 200).await?;
+    let pois = match (p.around_lon, p.around_lat) {
+        (Some(lon), Some(lat)) => db::pois_around_point(&st.db, id, lon, lat, crate::service::AREA_RADIUS_M).await?,
+        _ => db::pois_near_station(&st.db, id, p.max_walk.unwrap_or(30), None, 200).await?,
+    };
     let services = db::station_services(&st.db, id).await?;
     let traffic = st.timetable.station_traffic(id);
     Ok(Json(StationDetail { station, pois, services, traffic }))

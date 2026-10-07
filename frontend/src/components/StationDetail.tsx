@@ -34,6 +34,8 @@ interface Props {
   onPoiClick: (id: number) => void;
   /** Lieux actuellement listés : la carte affiche exactement les mêmes, avec les mêmes numéros. */
   onVisibleChange: (pois: PoiNearStation[]) => void;
+  /** Destination sans gare : les lieux listés sont autour d'elle, à la distance indiquée depuis la gare. */
+  aroundName?: string | null;
 }
 
 /** Un lieu, ou plusieurs lieux de même nom regroupés ("Aire de jeux" x 8). */
@@ -243,7 +245,11 @@ export default function StationDetail(props: Props) {
                 : `Aucun lieu référencé ici ne correspond à « ${searchLabel} ». Voici ce qu'il y a autour de la gare.`}
             </p>
           )}
-          <p className="muted small">Lieux à moins de 30 min à pied, numérotés comme sur la carte.</p>
+          <p className="muted small">
+            {props.aroundName
+              ? `Lieux autour de ${props.aroundName} (sans gare), avec le temps à pied depuis cette gare. Numérotés comme sur la carte.`
+              : "Lieux à moins de 30 min à pied, numérotés comme sur la carte."}
+          </p>
           {counts.size > 1 && (
             <div className="options" role="group" aria-label="Filtrer par type de lieu">
               <button

@@ -295,6 +295,72 @@ pub async fn candidates(
     .await
 }
 
+/// Lieu sans gare : les lieux autour du LIEU (et non des gares), chacun associé aux gares d'accès
+/// proches. La « marche » est la distance gare -> lieu (x 1,3 pour les détours, à 5 km/h) : elle dit
+/// honnêtement le dernier kilomètre, sans filtre de marche.
+pub async fn candidates_around_point(
+    db: &PgPool,
+    origin_id: i64,
+    criteria: &Criteria,
+    station_ids: &[i64],
+    lon: f64,
+    lat: f64,
+    radius_m: f64,
+) -> sqlx::Result<Vec<CandidateRow>> {
+    let keywords = criteria.keywords.join(" or ");
+    sqlx::query_as::<_, CandidateRow>(&format!(
+        "SELECT s.id AS station_id, s.name AS station_name, s.city AS station_city,
+                s.lon AS station_lon, s.lat AS station_lat, s.pmr AS station_pmr,
+                CASE WHEN s.id = $1 THEN 0 ELSE t.minutes END AS travel_minutes,
+                CASE WHEN s.id = $1 THEN 0 ELSE t.nb_changes END AS nb_changes,
+                t.example_departure,
+                {POI_COLS},
+                greatest(1, ceil(ST_Distance(s.geom, p.geom) * 1.3 / (5000.0 / 60)))::int AS walk_minutes,
+                round(ST_Distance(s.geom, p.geom))::int AS distance_m,
+                CASE WHEN $3 = '' THEN 0::real
+                     ELSE ts_rank(p.tsv, websearch_to_tsquery('french', $3)) END AS text_rank
+         FROM stations s
+         LEFT JOIN travel_times t ON t.origin_id = $1 AND t.station_id = s.id
+         JOIN pois p ON ST_DWithin(p.geom, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography, $6)
+         WHERE s.id = ANY($2)"
+    ))
+    .bind(origin_id)
+    .bind(station_ids)
+    .bind(keywords)
+    .bind(lon)
+    .bind(lat)
+    .bind(radius_m)
+    .fetch_all(db)
+    .await
+}
+
+/// Fiche d'une gare ouverte depuis un lieu sans gare : les lieux autour de ce lieu, avec leur
+/// distance depuis la gare.
+pub async fn pois_around_point(
+    db: &PgPool,
+    station_id: i64,
+    lon: f64,
+    lat: f64,
+    radius_m: f64,
+) -> sqlx::Result<Vec<PoiNearStation>> {
+    sqlx::query_as::<_, PoiNearStation>(&format!(
+        "SELECT {POI_COLS},
+                greatest(1, ceil(ST_Distance(s.geom, p.geom) * 1.3 / (5000.0 / 60)))::int AS walk_minutes,
+                round(ST_Distance(s.geom, p.geom))::int AS distance_m
+         FROM stations s
+         JOIN pois p ON ST_DWithin(p.geom, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4)
+         WHERE s.id = $1
+         ORDER BY ST_Distance(s.geom, p.geom), p.name
+         LIMIT 200"
+    ))
+    .bind(station_id)
+    .bind(lon)
+    .bind(lat)
+    .bind(radius_m)
+    .fetch_all(db)
+    .await
+}
+
 // ---------- Cartographie ----------
 
 #[derive(sqlx::FromRow)]

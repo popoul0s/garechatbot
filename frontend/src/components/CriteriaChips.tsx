@@ -39,7 +39,7 @@ export default function CriteriaChips({ criteria: c, outcome, onChange, onEditOr
         </button>
         {c.place && (
           <span className="chip">
-            Vers {c.place}
+            {outcome.place_area ? `Autour de ${outcome.place_area.name} (sans gare)` : `Vers ${c.place}`}
             <button className="chip-x" aria-label={`Retirer ${c.place}`} onClick={() => set({ place: null })}>
               <X size={12} weight="bold" />
             </button>
@@ -76,14 +76,16 @@ export default function CriteriaChips({ criteria: c, outcome, onChange, onEditOr
             {formatMinutes(outcome.applied_max_travel_minutes)} de train max
           </button>
         )}
-        <button
-          className={`chip ${walkDefault ? "chip-default" : ""}`}
-          aria-expanded={open === "walk"}
-          onClick={() => toggle("walk")}
-          title="Changer la marche maximum depuis la gare"
-        >
-          {outcome.applied_max_walk_minutes} min à pied max
-        </button>
+        {!outcome.place_area && (
+          <button
+            className={`chip ${walkDefault ? "chip-default" : ""}`}
+            aria-expanded={open === "walk"}
+            onClick={() => toggle("walk")}
+            title="Changer la marche maximum depuis la gare"
+          >
+            {outcome.applied_max_walk_minutes} min à pied max
+          </button>
+        )}
         <button className="chip chip-add" aria-expanded={open === "themes"} onClick={() => toggle("themes")}>
           <Plus size={12} weight="bold" aria-hidden /> Envie
         </button>
@@ -129,7 +131,7 @@ export default function CriteriaChips({ criteria: c, outcome, onChange, onEditOr
           )}
         </div>
       )}
-      {(travelDefault || walkDefault) && (
+      {((showTravel && travelDefault) || (!outcome.place_area && walkDefault)) && (
         <p className="understood-hint">En gris : valeurs par défaut, cliquez pour les changer.</p>
       )}
     </section>

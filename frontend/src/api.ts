@@ -89,6 +89,13 @@ export interface Recommendation {
   missing_themes: string[];
 }
 
+export interface PlaceArea {
+  name: string;
+  lon: number;
+  lat: number;
+  radius_m: number;
+}
+
 export interface Criteria {
   origin: string | null;
   max_travel_minutes: number | null;
@@ -111,6 +118,8 @@ export interface SearchOutcome {
   notes: string[];
   /** Gare de départ absente ou introuvable : à demander avant de chercher. */
   needs_origin: boolean;
+  /** Destination sans gare : lieux cherchés autour d'elle, avec la gare d'accès. */
+  place_area?: PlaceArea | null;
 }
 
 export interface Answer {
@@ -130,6 +139,8 @@ export interface ChatResponse {
   recommendations: Recommendation[];
   notes: string[];
   needs_origin: boolean;
+  /** Destination sans gare : lieux cherchés autour d'elle, avec la gare d'accès. */
+  place_area?: PlaceArea | null;
   engine: {
     extraction: string;
     generation: string;
@@ -200,8 +211,11 @@ export const api = {
   origins: () => get<Station[]>("/api/origins"),
   search: (criteria: Criteria) => post<SearchOutcome>("/api/search", criteria),
   searchStations: (q: string) => get<Station[]>(`/api/stations?q=${encodeURIComponent(q)}`),
-  station: (id: number, maxWalk = 30) =>
-    get<StationDetailData>(`/api/stations/${id}?max_walk=${maxWalk}`),
+  /** `around` : lieu sans gare demandé, dont on liste les lieux (distance depuis la gare). */
+  station: (id: number, maxWalk = 30, around?: PlaceArea | null) =>
+    get<StationDetailData>(
+      `/api/stations/${id}?max_walk=${maxWalk}${around ? `&around_lon=${around.lon}&around_lat=${around.lat}` : ""}`,
+    ),
   mapStations: (origin: string | null) =>
     get<GeoJSON.FeatureCollection>(`/api/map/stations${origin ? `?origin=${encodeURIComponent(origin)}` : ""}`),
   mapLines: () => get<GeoJSON.FeatureCollection>("/api/map/lines"),

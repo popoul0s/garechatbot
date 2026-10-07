@@ -33,6 +33,7 @@ function Card({
   hot,
   onHover,
   onOpen,
+  fromPlace,
 }: {
   r: Recommendation;
   rank: number;
@@ -41,6 +42,8 @@ function Card({
   hot: boolean;
   onHover: (id: number | null) => void;
   onOpen: () => void;
+  /** Destination sans gare : la distance gare -> lieu compte plus que la marche. */
+  fromPlace: boolean;
 }) {
   const best = r.pois[0];
   const others = r.pois.slice(1, 5);
@@ -73,7 +76,10 @@ function Card({
             <span className="card-highlight">
               <PersonSimpleWalk size={15} aria-hidden className="ico" />
               <span>
-                <strong>{best.name}</strong> à {best.walk_minutes} min à pied
+                <strong>{best.name}</strong>{" "}
+                {fromPlace
+                  ? `à ${(best.distance_m / 1000).toFixed(1).replace(".", ",")} km de la gare (${best.walk_minutes} min à pied)`
+                  : `à ${best.walk_minutes} min à pied`}
               </span>
             </span>
           )}
@@ -183,6 +189,7 @@ export default function Results({ criteria, outcome, answer, engine, hoveredId, 
             hot={hoveredId === r.station.id}
             onHover={onHover}
             onOpen={() => onOpen(r.station.id)}
+            fromPlace={!!outcome.place_area}
           />
         ))}
       </ol>

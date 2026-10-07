@@ -4,6 +4,7 @@ mod domain;
 mod error;
 mod geo;
 mod llm;
+mod overpass;
 mod routes;
 mod service;
 mod state;
