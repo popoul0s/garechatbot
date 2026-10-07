@@ -52,6 +52,7 @@ export default function App() {
   const [criteria, setCriteria] = useState<Criteria>({ ...EMPTY_CRITERIA, origin: savedOrigin() ?? DEFAULT_ORIGIN });
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState<string | null>(null);
+  const [resetKey, setResetKey] = useState(0);
   const [outcome, setOutcome] = useState<SearchOutcome | null>(null);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [engine, setEngine] = useState<{ label: string; ms: number } | null>(null);
@@ -162,6 +163,7 @@ export default function App() {
     if (sessionId) api.resetChat(sessionId).catch(console.error);
     setSessionId(null);
     setCriteria({ ...EMPTY_CRITERIA, origin: criteria.origin });
+    setResetKey((k) => k + 1);
     setOutcome(null);
     setAnswer(null);
     setQuery(null);
@@ -229,6 +231,8 @@ export default function App() {
                 onFilters={runFilters}
                 onClearAskAround={() => setAskAround(null)}
                 inputRef={inputRef}
+                query={query}
+                resetKey={resetKey}
               />
 
               {error && (

@@ -1,4 +1,4 @@
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Criteria, formatMinutes, Station, StationSummary, TAG_LABELS } from "../api";
 import OriginPicker from "./OriginPicker";
 
@@ -11,6 +11,10 @@ interface Props {
   onFilters: (next: Criteria) => void;
   onClearAskAround: () => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
+  /** Demande en cours : reste affichée dans le champ pour pouvoir la modifier. */
+  query: string | null;
+  /** Change à chaque « nouvelle recherche » : le champ est alors vidé. */
+  resetKey: number;
 }
 
 const DURATIONS = [30, 60, 90, 120, 180];
@@ -28,8 +32,15 @@ export default function SearchPanel(props: Props) {
     e.preventDefault();
     if (!text.trim() || props.loading) return;
     props.onAsk(text.trim());
-    setText("");
   };
+
+  // la demande affichée suit la recherche en cours (exemple cliqué, relance...)
+  useEffect(() => {
+    if (props.query !== null) setText(props.query);
+  }, [props.query]);
+  useEffect(() => {
+    if (props.resetKey > 0) setText("");
+  }, [props.resetKey]);
 
   const update = (patch: Partial<Criteria>) => props.onFilters({ ...c, ...patch, keywords: [] });
   const toggleTheme = (t: string) =>
@@ -67,16 +78,32 @@ export default function SearchPanel(props: Props) {
           </div>
         )}
         <div className="ask-row">
-          <input
-            id="ask-input"
-            ref={props.inputRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={
-              props.askAround ? "Ex. que faire avec des enfants ?" : "Ex. une balade nature facile à moins d'1h"
-            }
-            autoComplete="off"
-          />
+          <span className="ask-field">
+            <input
+              id="ask-input"
+              ref={props.inputRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={
+                props.askAround ? "Ex. que faire avec des enfants ?" : "Ex. une balade nature facile à moins d'1h"
+              }
+              autoComplete="off"
+            />
+            {text && (
+              <button
+                type="button"
+                className="clear-input"
+                aria-label="Effacer la demande"
+                title="Effacer"
+                onClick={() => {
+                  setText("");
+                  props.inputRef.current?.focus();
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </span>
           <button type="submit" className="primary" disabled={props.loading || !text.trim()}>
             Chercher
           </button>
@@ -104,7 +131,11 @@ export default function SearchPanel(props: Props) {
                   type="button"
                   className={`option ${c.max_travel_minutes === m ? "on" : ""}`}
                   aria-pressed={c.max_travel_minutes === m}
-                  onClick={() => update({ max_travel_minutes: c.max_travel_minutes === m ? null : m })}
+                  onClick={() =>
+                    update({
+                      max_travel_minutes: c.max_travel_minutes === m ? null : m,
+                    })
+                  }
                 >
                   {formatMinutes(m)}
                 </button>
@@ -129,7 +160,11 @@ export default function SearchPanel(props: Props) {
                 type="button"
                 className={`option ${c.audience === "famille" ? "on" : ""}`}
                 aria-pressed={c.audience === "famille"}
-                onClick={() => update({ audience: c.audience === "famille" ? null : "famille" })}
+                onClick={() =>
+                  update({
+                    audience: c.audience === "famille" ? null : "famille",
+                  })
+                }
               >
                 Avec des enfants
               </button>
@@ -144,7 +179,11 @@ export default function SearchPanel(props: Props) {
                   type="button"
                   className={`option ${c.max_walk_minutes === m ? "on" : ""}`}
                   aria-pressed={c.max_walk_minutes === m}
-                  onClick={() => update({ max_walk_minutes: c.max_walk_minutes === m ? null : m })}
+                  onClick={() =>
+                    update({
+                      max_walk_minutes: c.max_walk_minutes === m ? null : m,
+                    })
+                  }
                 >
                   {m} min
                 </button>
