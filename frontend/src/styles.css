@@ -1222,3 +1222,43 @@ main {
     color: oklch(0.2 0.02 200);
   }
 }
+
+/* Question « De quelle gare partez-vous ? » */
+.origin-prompt {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  animation: prompt-in 260ms var(--ease-out);
+}
+.origin-prompt h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.origin-prompt p {
+  margin: 0;
+}
+.origin-last {
+  justify-self: start;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.origin-last:hover {
+  border-color: var(--accent);
+}
+@keyframes prompt-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .origin-prompt {
+    animation: none;
+  }
+}

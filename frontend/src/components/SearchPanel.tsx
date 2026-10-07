@@ -9,6 +9,7 @@ interface Props {
   askAround: StationSummary | null;
   onAsk: (text: string) => void;
   onFilters: (next: Criteria) => void;
+  onOrigin: (name: string) => void;
   onClearAskAround: () => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
   /** Demande en cours : reste affichée dans le champ pour pouvoir la modifier. */
@@ -51,7 +52,7 @@ export default function SearchPanel(props: Props) {
 
   return (
     <div className="search">
-      <OriginPicker value={c.origin} stations={props.origins} onChange={(origin) => update({ origin })} />
+      <OriginPicker value={c.origin} stations={props.origins} onChange={props.onOrigin} />
 
       <form ref={formRef} onSubmit={submit} className="ask">
         <label htmlFor="ask-input" className="ask-label">

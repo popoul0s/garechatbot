@@ -6,6 +6,9 @@ interface Props {
   value: string | null;
   stations: Station[];
   onChange: (name: string) => void;
+  /** Identifiant du champ (deux sélecteurs peuvent cohabiter sur la page). */
+  inputId?: string;
+  label?: string;
 }
 
 const fold = (s: string) =>
@@ -19,7 +22,7 @@ const fold = (s: string) =>
 const MAX = 8;
 
 /** Choix de la gare de départ : saisie avec suggestions, ou gare la plus proche de l'utilisateur. */
-export default function OriginPicker({ value, stations, onChange }: Props) {
+export default function OriginPicker({ value, stations, onChange, inputId = "origin-input", label = "Je pars de" }: Props) {
   const [text, setText] = useState<string | null>(null); // null = pas en cours de saisie
   const [active, setActive] = useState(0);
   const [locating, setLocating] = useState(false);
@@ -77,15 +80,15 @@ export default function OriginPicker({ value, stations, onChange }: Props) {
 
   return (
     <div className="origin">
-      <label htmlFor="origin-input">Je pars de</label>
+      <label htmlFor={inputId}>{label}</label>
       <div className="origin-row">
         <div className="combo">
           <input
-            id="origin-input"
+            id={inputId}
             ref={inputRef}
             role="combobox"
             aria-expanded={open}
-            aria-controls="origin-list"
+            aria-controls={`${inputId}-list`}
             aria-autocomplete="list"
             autoComplete="off"
             placeholder="Nom de votre gare…"
@@ -117,7 +120,7 @@ export default function OriginPicker({ value, stations, onChange }: Props) {
             }}
           />
           {open && (
-            <ul id="origin-list" role="listbox" className="combo-list">
+            <ul id={`${inputId}-list`} role="listbox" className="combo-list">
               {suggestions.map((s, i) => (
                 <li
                   key={s.id}

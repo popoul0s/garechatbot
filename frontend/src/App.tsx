@@ -14,14 +14,14 @@ import {
 } from "./api";
 import MapView, { MapMode } from "./components/MapView";
 import Results from "./components/Results";
+import OriginPrompt from "./components/OriginPrompt";
 import SearchPanel from "./components/SearchPanel";
 import StationDetail from "./components/StationDetail";
 
 type MobileTab = "search" | "map";
-const DEFAULT_ORIGIN = "Grenoble";
 const ORIGIN_KEY = "garechatbot.origin";
 
-/** Dernière gare de départ choisie (confort : retrouvée au prochain chargement). */
+/** Dernière gare de départ utilisée : proposée en un clic, jamais choisie d'office. */
 function savedOrigin(): string | null {
   try {
     return localStorage.getItem(ORIGIN_KEY);
@@ -50,7 +50,12 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
   const [stationsGeo, setStationsGeo] = useState<GeoJSON.FeatureCollection | null>(null);
   const [linesGeo, setLinesGeo] = useState<GeoJSON.FeatureCollection | null>(null);
 
-  const [criteria, setCriteria] = useState<Criteria>({ ...EMPTY_CRITERIA, origin: savedOrigin() ?? DEFAULT_ORIGIN });
+  // pas de gare de départ par défaut : elle est demandée à la première recherche qui n'en cite pas
+  const [criteria, setCriteria] = useState<Criteria>({ ...EMPTY_CRITERIA });
+  // recherche en attente de la gare de départ, relancée dès qu'elle est choisie
+  const [pending, setPending] = useState<{ kind: "ask"; text: string } | { kind: "filters"; next: Criteria } | null>(
+    null,
+  );
   const [sessionId, setSessionId] = useState<string | null>(null);
   // demande venue de l'accueil : affichée dès le premier rendu (la transition montre le champ déjà rempli)
   const [query, setQuery] = useState<string | null>(initialQuery);
@@ -72,19 +77,12 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
     api.mapLines().then(setLinesGeo).catch(console.error);
     api
       .origins()
-      .then((list) => {
-        setOrigins(list);
-        setCriteria((c) => {
-          if (list.length === 0 || list.some((o) => o.name === c.origin)) return c;
-          const fallback = list.find((o) => o.name === DEFAULT_ORIGIN) ?? list[0];
-          return { ...c, origin: fallback.name };
-        });
-      })
+      .then(setOrigins)
       .catch(console.error);
   }, []);
   useEffect(() => {
-    if (!criteria.origin) return;
     api.mapStations(criteria.origin).then(setStationsGeo).catch(console.error);
+    if (!criteria.origin) return;
     try {
       localStorage.setItem(ORIGIN_KEY, criteria.origin);
     } catch {
@@ -97,6 +95,17 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
     setDetail(null);
   };
 
+  // gare choisie (en haut ou dans la question « De quelle gare partez-vous ? ») : la recherche en
+  // attente repart avec elle ; sinon, les résultats affichés sont recalculés depuis cette gare
+  const chooseOrigin = (name: string) => {
+    const p = pending;
+    setPending(null);
+    if (p?.kind === "ask") ask(p.text, name);
+    else if (p?.kind === "filters") runFilters({ ...p.next, origin: name });
+    else if (outcome) runFilters({ ...criteria, origin: name, keywords: [] });
+    else setCriteria((c) => ({ ...c, origin: name }));
+  };
+
   // Recherche par filtres : aucune IA, directement la recherche + classement du backend.
   const runFilters = async (next: Criteria) => {
     setCriteria(next);
@@ -106,6 +115,7 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
     const t = performance.now();
     try {
       const o = await api.search({ ...next, around_station_id: askAround?.id ?? null });
+      setPending(o.needs_origin ? { kind: "filters", next } : null);
       afterResults(o);
       setAnswer(null);
       setEngine({ label: "Recherche par filtres (sans IA)", ms: Math.round(performance.now() - t) });
@@ -117,15 +127,17 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
   };
 
   // Recherche en langage naturel : l'IA comprend la demande, le backend cherche et classe.
-  const ask = async (text: string) => {
+  const ask = async (text: string, origin?: string) => {
     setQuery(text);
     setLoading(true);
     setError(null);
     try {
-      const d = await api.chat(text, sessionId, askAround?.id ?? null, criteria);
+      const context = origin ? { ...criteria, origin } : criteria;
+      const d = await api.chat(text, sessionId, askAround?.id ?? null, context);
       setSessionId(d.session_id);
+      setPending(d.needs_origin ? { kind: "ask", text } : null);
       // gare de départ : celle réellement retenue par la recherche (« en partant de gieres » -> Gières)
-      setCriteria({ ...d.criteria, origin: d.origin?.name ?? d.criteria.origin ?? criteria.origin, around_station_id: null });
+      setCriteria({ ...d.criteria, origin: d.origin?.name ?? (d.needs_origin ? null : d.criteria.origin), around_station_id: null });
       afterResults(d);
       // Sans IA, le texte généré répète les infos déjà affichées sur chaque carte : on ne le montre pas.
       setAnswer(d.engine.generation === "llm" ? d.answer : null);
@@ -176,6 +188,7 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
     if (sessionId) api.resetChat(sessionId).catch(console.error);
     setSessionId(null);
     setCriteria({ ...EMPTY_CRITERIA, origin: criteria.origin });
+    setPending(null);
     setResetKey((k) => k + 1);
     setOutcome(null);
     setAnswer(null);
@@ -253,8 +266,9 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
                 criteria={criteria}
                 loading={loading}
                 askAround={askAround}
-                onAsk={ask}
+                onAsk={(text) => ask(text)}
                 onFilters={runFilters}
+                onOrigin={chooseOrigin}
                 onClearAskAround={() => setAskAround(null)}
                 inputRef={inputRef}
                 query={query}
@@ -272,7 +286,17 @@ export default function App({ initialQuery = null }: { initialQuery?: string | n
                 </div>
               )}
 
-              {!loading && outcome && (
+              {!loading && outcome?.needs_origin && (
+                <OriginPrompt
+                  query={pending?.kind === "ask" ? pending.text : null}
+                  message={outcome.notes[0] ?? null}
+                  stations={origins}
+                  last={savedOrigin()}
+                  onChoose={chooseOrigin}
+                />
+              )}
+
+              {!loading && outcome && !outcome.needs_origin && (
                 <Results
                   query={query}
                   criteria={criteria}

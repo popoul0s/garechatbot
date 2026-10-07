@@ -104,7 +104,7 @@ Chaque résultat garde le détail de son score, ce qui rend la recommandation ex
 - Les horaires et durées viennent de la base, jamais du LLM.
 - Une validation vérifie les ids cités.
 - Avec 0 résultat, l'appli répond « Aucune destination ne respecte X » et propose d'assouplir un critère.
-- Si la demande est trop floue (pas d'origine par exemple), l'appli pose une question de clarification ou prend Grenoble par défaut en le disant.
+- Si la gare de départ n'est pas citée (ni choisie), l'appli la demande toujours (« De quelle gare partez-vous ? ») puis relance la recherche : aucune gare n'est choisie d'office.
 
 ## 6. Frontend (AL)
 

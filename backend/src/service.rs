@@ -23,6 +23,8 @@ pub struct SearchOutcome {
     pub recommendations: Vec<Recommendation>,
     /// Messages à afficher à l'utilisateur (valeurs par défaut, assouplissement, données manquantes).
     pub notes: Vec<String>,
+    /// Gare de départ absente ou introuvable : l'interface doit la demander avant de chercher.
+    pub needs_origin: bool,
 }
 
 /// Temps de trajet depuis une gare : calculés à la première demande à partir des horaires en mémoire,
@@ -54,23 +56,16 @@ pub async fn ensure_travel_times(state: &AppState, origin_id: i64) -> AppResult<
 }
 
 pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOutcome> {
-    let mut notes = Vec::new();
-
     let around = match criteria.around_station_id {
         Some(id) => db::get_station(&state.db, id).await?,
         None => None,
     };
 
-    let origin_name = match &criteria.origin {
-        Some(o) => o.clone(),
-        None => {
-            if around.is_none() {
-                notes.push(format!("Ville de départ non précisée : {} par défaut.", state.cfg.default_origin));
-            }
-            state.cfg.default_origin.clone()
-        }
+    // Pas de gare de départ par défaut : on la demande (sauf question sur une gare précise).
+    let origin = match &criteria.origin {
+        Some(o) => db::resolve_station(&state.db, o).await?,
+        None => None,
     };
-    let origin = db::resolve_station(&state.db, &origin_name).await?;
 
     let mut outcome = SearchOutcome {
         origin: origin.as_ref().map(StationSummary::from),
@@ -79,7 +74,8 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
         applied_max_walk_minutes: criteria.max_walk_minutes.unwrap_or(DEFAULT_MAX_WALK),
         relaxed: false,
         recommendations: Vec::new(),
-        notes,
+        notes: Vec::new(),
+        needs_origin: false,
     };
 
     // Sans origine connue, on ne peut chercher qu'autour d'une gare sélectionnée.
@@ -87,12 +83,15 @@ pub async fn search(state: &AppState, criteria: &Criteria) -> AppResult<SearchOu
         (Some(o), _) => o.id,
         (None, Some(a)) => a.id,
         (None, None) => {
-            outcome.notes.push(format!(
-                "Je ne trouve pas de gare correspondant à « {origin_name} » dans les données disponibles."
-            ));
+            outcome.needs_origin = true;
+            outcome.notes.push(match &criteria.origin {
+                Some(o) => format!("Je ne trouve pas de gare « {o} ». De quelle gare partez-vous ?"),
+                None => "De quelle gare partez-vous ? Choisissez-la pour que je calcule les trajets.".into(),
+            });
             return Ok(outcome);
         }
     };
+    let origin_name = origin.as_ref().map_or_else(|| around.as_ref().map(|a| a.name.clone()).unwrap_or_default(), |o| o.name.clone());
     // les temps de trajet pré-calculés ne servent que pour une recherche « partout » (sans gare ni lieu imposés)
     if around.is_none() && criteria.place.is_none() && !ensure_travel_times(state, origin_id).await? {
         outcome.notes.push(format!(

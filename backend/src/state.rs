@@ -6,7 +6,6 @@ use sqlx::PgPool;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::config::Config;
 use crate::domain::criteria::Criteria;
 use crate::geo::GeoClient;
 use crate::llm::LlmClient;
@@ -22,7 +21,6 @@ pub struct Session {
 #[derive(Clone)]
 pub struct AppState {
     pub db: PgPool,
-    pub cfg: Arc<Config>,
     pub llm: Option<LlmClient>,
     pub geo: GeoClient,
     pub timetable: Arc<Timetable>,

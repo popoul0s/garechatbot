@@ -60,7 +60,6 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState {
         db,
-        cfg: Arc::new(cfg.clone()),
         llm,
         geo: geo::GeoClient::new(cfg.geo_api_url.clone())?,
         timetable: Arc::new(timetable),

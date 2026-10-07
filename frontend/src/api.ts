@@ -109,6 +109,8 @@ export interface SearchOutcome {
   relaxed: boolean;
   recommendations: Recommendation[];
   notes: string[];
+  /** Gare de départ absente ou introuvable : à demander avant de chercher. */
+  needs_origin: boolean;
 }
 
 export interface Answer {
@@ -127,6 +129,7 @@ export interface ChatResponse {
   relaxed: boolean;
   recommendations: Recommendation[];
   notes: string[];
+  needs_origin: boolean;
   engine: {
     extraction: string;
     generation: string;
@@ -199,8 +202,8 @@ export const api = {
   searchStations: (q: string) => get<Station[]>(`/api/stations?q=${encodeURIComponent(q)}`),
   station: (id: number, maxWalk = 30) =>
     get<StationDetailData>(`/api/stations/${id}?max_walk=${maxWalk}`),
-  mapStations: (origin: string) =>
-    get<GeoJSON.FeatureCollection>(`/api/map/stations?origin=${encodeURIComponent(origin)}`),
+  mapStations: (origin: string | null) =>
+    get<GeoJSON.FeatureCollection>(`/api/map/stations${origin ? `?origin=${encodeURIComponent(origin)}` : ""}`),
   mapLines: () => get<GeoJSON.FeatureCollection>("/api/map/lines"),
   chat: (message: string, sessionId: string | null, selectedStationId: number | null, context: Criteria) =>
     post<ChatResponse>("/api/chat", {

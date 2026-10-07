@@ -12,7 +12,6 @@ pub struct LlmConfig {
 pub struct Config {
     pub database_url: String,
     pub bind_addr: String,
-    pub default_origin: String,
     pub geo_api_url: String,
     /// `None` => mode sans LLM (règles + gabarit).
     pub llm: Option<LlmConfig>,
@@ -38,7 +37,6 @@ impl Config {
             database_url: env::var("DATABASE_URL")
                 .unwrap_or_else(|_| "postgres://gare:gare@localhost:5432/garechatbot".into()),
             bind_addr: non_empty("BIND_ADDR").unwrap_or_else(|| "0.0.0.0:8080".into()),
-            default_origin: non_empty("DEFAULT_ORIGIN").unwrap_or_else(|| "Grenoble".into()),
             geo_api_url: non_empty("GEO_API_URL").unwrap_or_else(|| "https://geo.api.gouv.fr".into()),
             llm,
         })
