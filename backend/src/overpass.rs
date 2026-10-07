@@ -179,8 +179,8 @@ pub async fn ensure_area(db: &PgPool, lon: f64, lat: f64, radius_m: f64) -> anyh
             .filter_map(|k| e.tags.get(*k).map(|v| format!("{k}={v}")))
             .collect();
         let res = sqlx::query(
-            "INSERT INTO pois (source, source_id, name, description, tags, raw_types, url, lon, lat, geom)
-             VALUES ('osm', $1, $2, $3, $4, $5, $6, $7, $8, ST_SetSRID(ST_MakePoint($7, $8), 4326)::geography)
+            "INSERT INTO pois (source, source_id, name, description, tags, raw_types, url, lon, lat, geom, ele)
+             VALUES ('osm', $1, $2, $3, $4, $5, $6, $7, $8, ST_SetSRID(ST_MakePoint($7, $8), 4326)::geography, $9)
              ON CONFLICT (source, source_id) DO NOTHING",
         )
         .bind(format!("{}/{}", e.kind, e.id))
@@ -191,15 +191,18 @@ pub async fn ensure_area(db: &PgPool, lon: f64, lat: f64, radius_m: f64) -> anyh
         .bind(e.tags.get("website"))
         .bind(lon)
         .bind(lat)
+        .bind(e.tags.get("ele").and_then(|v| v.replace(',', ".").trim_end_matches('m').trim().parse::<f32>().ok()))
         .execute(db)
         .await?;
         added += res.rows_affected() as usize;
     }
     // les nouveaux lieux proches d'une gare servent aussi aux recherches classiques (comme link.py)
     sqlx::query(
-        "INSERT INTO station_poi (station_id, poi_id, distance_m, walk_minutes)
+        "INSERT INTO station_poi (station_id, poi_id, distance_m, walk_minutes, climb_m)
          SELECT s.id, p.id, round(ST_Distance(s.geom, p.geom))::int,
-                greatest(1, ceil(ST_Distance(s.geom, p.geom) * 1.3 / (5000.0 / 60)))::int
+                greatest(1, ceil(ST_Distance(s.geom, p.geom) * 1.3 / (5000.0 / 60)
+                                 + greatest(0, coalesce(p.ele - s.ele, 0)) * 0.1))::int,
+                CASE WHEN p.ele IS NOT NULL AND s.ele IS NOT NULL THEN greatest(0, round(p.ele - s.ele))::int END
          FROM pois p JOIN stations s ON ST_DWithin(s.geom, p.geom, 3000)
          WHERE ST_DWithin(p.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
          ON CONFLICT DO NOTHING",

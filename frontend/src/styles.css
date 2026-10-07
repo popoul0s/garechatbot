@@ -1666,3 +1666,8 @@ button.chip-strong:hover {
     color: var(--text);
   }
 }
+
+.climb {
+  color: var(--muted);
+  font-weight: 400;
+}

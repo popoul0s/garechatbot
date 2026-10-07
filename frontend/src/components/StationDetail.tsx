@@ -316,6 +316,7 @@ export default function StationDetail(props: Props) {
                         </strong>
                         <span className="walk">
                           <PersonSimpleWalk size={14} aria-hidden className="ico" /> {p.walk_minutes} min
+                          {p.climb_m != null && p.climb_m >= 50 && <span className="climb"> · +{p.climb_m} m</span>}
                         </span>
                       </span>
                       <span className="muted small">

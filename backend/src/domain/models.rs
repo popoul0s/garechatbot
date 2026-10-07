@@ -44,6 +44,8 @@ pub struct PoiNearStation {
     pub poi: Poi,
     pub walk_minutes: i32,
     pub distance_m: i32,
+    /// Dénivelé positif gare -> lieu, en mètres (compté dans `walk_minutes`), si les altitudes sont connues.
+    pub climb_m: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -72,6 +74,7 @@ pub struct CandidateRow {
     pub poi: Poi,
     pub walk_minutes: i32,
     pub distance_m: i32,
+    pub climb_m: Option<i32>,
     pub text_rank: f32,
 }
 
@@ -97,6 +100,7 @@ pub struct PoiHit {
     pub poi: Poi,
     pub walk_minutes: i32,
     pub distance_m: i32,
+    pub climb_m: Option<i32>,
     /// Part des thèmes demandés couverts par ce POI (0..1).
     pub match_score: f64,
     /// Pertinence = correspondance x intérêt touristique : sert à ordonner les lieux.

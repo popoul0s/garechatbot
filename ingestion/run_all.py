@@ -6,6 +6,7 @@ Exemples :
     python run_all.py osm
     python run_all.py lakes --osm-limit 220
     python run_all.py sncf --inspect
+    python run_all.py elevation   # altitudes (IGN) : la montée compte dans le temps de marche
     python run_all.py link
     python run_all.py services --osm-limit 220   # toilettes, wifi, horaires, vélos, taxis...
     python run_all.py stats
@@ -16,6 +17,7 @@ from __future__ import annotations
 import argparse
 
 import datatourisme
+import elevation
 import gtfs
 import link
 import osm
@@ -46,7 +48,7 @@ def stats() -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Ingestion Aiguillage")
-    p.add_argument("step", choices=["all", "gtfs", "rail", "sncf", "osm", "lakes", "datatourisme", "link", "services", "stats"])
+    p.add_argument("step", choices=["all", "gtfs", "rail", "sncf", "osm", "lakes", "datatourisme", "elevation", "link", "services", "stats"])
     p.add_argument("--gtfs", default=DEFAULT_GTFS, help="URL ou chemin du GTFS ferroviaire")
     p.add_argument("--origins", default=DEFAULT_ORIGINS, help="gares d'origine, séparées par des virgules")
     p.add_argument("--datatourisme", help="URL, archive .zip ou dossier du flux DATAtourisme")
@@ -86,7 +88,9 @@ def main() -> None:
             p.error("--datatourisme est requis")
         else:
             print("DATAtourisme : aucun flux fourni (--datatourisme), étape ignorée")
-    if a.step in ("all", "datatourisme", "osm", "lakes", "link"):
+    if a.step in ("all", "elevation"):
+        elevation.run()
+    if a.step in ("all", "datatourisme", "osm", "lakes", "elevation", "link"):
         link.run()
     if a.step in ("all", "services"):
         services.run(a.osm_limit, a.osm_restart, a.inspect, a.no_osm)

@@ -14,6 +14,9 @@ interface Props {
   onRelax: (next: Criteria) => void;
 }
 
+/** Montée notable, déjà comptée dans le temps de marche : « , +510 m de montée ». */
+const climb = (m: number | null | undefined) => (m != null && m >= 50 ? `, +${m} m de montée` : "");
+
 function Bar({ label, value }: { label: string; value: number }) {
   return (
     <div className="bar">
@@ -78,8 +81,8 @@ function Card({
               <span>
                 <strong>{best.name}</strong>{" "}
                 {fromPlace
-                  ? `à ${(best.distance_m / 1000).toFixed(1).replace(".", ",")} km de la gare (${best.walk_minutes} min à pied)`
-                  : `à ${best.walk_minutes} min à pied`}
+                  ? `à ${(best.distance_m / 1000).toFixed(1).replace(".", ",")} km de la gare (${best.walk_minutes} min à pied${climb(best.climb_m)})`
+                  : `à ${best.walk_minutes} min à pied${climb(best.climb_m)}`}
               </span>
             </span>
           )}

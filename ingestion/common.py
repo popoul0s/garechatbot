@@ -23,6 +23,8 @@ THEMES = {"nature", "randonnee", "montagne", "eau", "culture", "patrimoine", "mu
 # Vitesse de marche et facteur de détour pour estimer un temps de marche à partir d'une distance à vol d'oiseau
 WALK_METERS_PER_MIN = 5000 / 60
 DETOUR_FACTOR = 1.3
+# Dénivelé positif : 10 minutes par 100 m de montée (règle de randonnée classique)
+CLIMB_MIN_PER_M = 0.1
 
 UIC_RE = re.compile(r"(87\d{6})")
 

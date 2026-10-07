@@ -75,6 +75,7 @@ function poiPopupHtml(p: PoiNearStation): string {
   return (
     `<strong>${escapeHtml(p.name)}</strong><br/>` +
     `<span style="color:${cat.color}">${cat.label}</span> · ${p.walk_minutes} min à pied de la gare` +
+    (p.climb_m && p.climb_m >= 50 ? `, dont ${p.climb_m} m de montée` : "") +
     (p.description ? `<p>${escapeHtml(p.description.slice(0, 200))}</p>` : "") +
     (p.url ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noreferrer">Site web</a><br/>` : "") +
     `<span class="source">Source : ${sourceLabel(p.source)}</span>`

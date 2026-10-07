@@ -184,6 +184,14 @@ def lake_shores(elements: list[dict], stations: list[tuple[int, float, float]]) 
     return out
 
 
+def osm_ele(tags: dict) -> float | None:
+    """Altitude donnée par OSM (sommets, cols) : « 742 », « 742 m »…"""
+    try:
+        return float(tags.get("ele", "").replace(",", ".").replace("m", "").strip())
+    except ValueError:
+        return None
+
+
 def save(cur, source_id: str, tags: dict, lon: float, lat: float) -> bool:
     name = default_name(tags)
     app_tags = map_tags(tags)
@@ -191,12 +199,12 @@ def save(cur, source_id: str, tags: dict, lon: float, lat: float) -> bool:
         return False
     raw = [f"{k}={tags[k]}" for k in ("tourism", "historic", "leisure", "natural", "water", "route") if k in tags]
     cur.execute(
-        """INSERT INTO pois (source, source_id, name, description, tags, raw_types, url, lon, lat, geom)
-           VALUES ('osm', %s, %s, %s, %s, %s, %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography)
+        """INSERT INTO pois (source, source_id, name, description, tags, raw_types, url, lon, lat, geom, ele)
+           VALUES ('osm', %s, %s, %s, %s, %s, %s, %s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, %s)
            ON CONFLICT (source, source_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description,
                tags = EXCLUDED.tags, raw_types = EXCLUDED.raw_types, lon = EXCLUDED.lon, lat = EXCLUDED.lat,
-               geom = EXCLUDED.geom""",
-        (source_id, name, description(tags), app_tags, raw, tags.get("website"), lon, lat, lon, lat),
+               geom = EXCLUDED.geom, ele = COALESCE(EXCLUDED.ele, pois.ele)""",
+        (source_id, name, description(tags), app_tags, raw, tags.get("website"), lon, lat, lon, lat, osm_ele(tags)),
     )
     return True
 
@@ -223,6 +231,7 @@ def run_lakes(limit_stations: int | None = None) -> None:
     print("OSM : lacs autour des gares (contours)")
     with connect() as conn, conn.cursor() as cur:
         require_stations(cur)
+        cur.execute("ALTER TABLE pois ADD COLUMN IF NOT EXISTS ele REAL")
         cur.execute("CREATE TABLE IF NOT EXISTS osm_done (station_id BIGINT PRIMARY KEY REFERENCES stations(id) ON DELETE CASCADE)")
         drop_lake_centers(cur)
         stations = ordered_stations(cur)[:limit_stations]
@@ -258,6 +267,7 @@ def run(limit_stations: int | None = None, restart: bool = False) -> None:
     print("OSM : récupération des POI autour des gares (Overpass)")
     with connect() as conn, conn.cursor() as cur:
         require_stations(cur)
+        cur.execute("ALTER TABLE pois ADD COLUMN IF NOT EXISTS ele REAL")
         # Suivi des gares déjà traitées : une relance reprend là où l'import s'est arrêté.
         cur.execute("SELECT to_regclass('osm_done') IS NOT NULL")
         tracked = cur.fetchone()[0]

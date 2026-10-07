@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS stations (
     geom        GEOGRAPHY(Point, 4326) NOT NULL,
     pmr         BOOLEAN,                       -- accessibilité PMR (SNCF), NULL = inconnu
     equipments  TEXT[] NOT NULL DEFAULT '{}',
+    ele         REAL,                          -- altitude en m (API IGN, étape elevation)
     sources     TEXT[] NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS stations_geom_idx ON stations USING GIST (geom);
@@ -67,6 +68,7 @@ CREATE TABLE IF NOT EXISTS pois (
     lon         DOUBLE PRECISION NOT NULL,
     lat         DOUBLE PRECISION NOT NULL,
     geom        GEOGRAPHY(Point, 4326) NOT NULL,
+    ele         REAL,                          -- altitude en m (étiquette OSM ou API IGN)
     embedding   VECTOR(384),                   -- rempli par ingestion/embed.py (optionnel)
     tsv         TSVECTOR GENERATED ALWAYS AS (
                     to_tsvector('french', coalesce(name, '') || ' ' || coalesce(description, ''))
@@ -82,7 +84,8 @@ CREATE TABLE IF NOT EXISTS station_poi (
     station_id    BIGINT NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
     poi_id        BIGINT NOT NULL REFERENCES pois(id) ON DELETE CASCADE,
     distance_m    INTEGER NOT NULL,
-    walk_minutes  INTEGER NOT NULL,
+    walk_minutes  INTEGER NOT NULL,                -- distance x 1,3 à 5 km/h + 10 min par 100 m de montée
+    climb_m       INTEGER,                         -- dénivelé positif gare -> lieu (NULL si altitude inconnue)
     PRIMARY KEY (station_id, poi_id)
 );
 CREATE INDEX IF NOT EXISTS station_poi_poi_idx ON station_poi (poi_id);

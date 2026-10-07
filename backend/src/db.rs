@@ -5,6 +5,13 @@ use sqlx::PgPool;
 use crate::domain::criteria::Criteria;
 use crate::domain::models::{CandidateRow, Poi, PoiNearStation, ReachableStation, Station, StationService};
 
+/// Temps de marche gare (s) -> lieu (p) : distance x 1,3 (détours) à 5 km/h, plus 10 min par 100 m
+/// de montée quand les altitudes sont connues (même règle que ingestion/link.py).
+const WALK_SQL: &str = "greatest(1, ceil(ST_Distance(s.geom, p.geom) * 1.3 / (5000.0 / 60)
+    + greatest(0, coalesce(p.ele - s.ele, 0)) * 0.1))::int";
+/// Dénivelé positif gare -> lieu, en mètres (NULL si une altitude manque).
+const CLIMB_SQL: &str = "CASE WHEN p.ele IS NOT NULL AND s.ele IS NOT NULL THEN greatest(0, round(p.ele - s.ele))::int END";
+
 const STATION_COLS: &str = "s.id, s.uic, s.name, s.city, s.lon, s.lat, s.pmr, s.equipments";
 /// `interest` : intérêt touristique du lieu (0..1), dérivé de sa catégorie d'origine.
 /// Un sommet, un lac ou un château valent plus qu'un square ou une aire de jeux.
@@ -66,6 +73,14 @@ pub async fn resolve_station(db: &PgPool, name: &str) -> sqlx::Result<Option<Sta
 
 /// Table des services créée au démarrage : l'API fonctionne même si l'étape `services` n'a pas tourné.
 pub async fn ensure_services_table(db: &PgPool) -> sqlx::Result<()> {
+    // altitudes et dénivelé (étape elevation) : colonnes créées si l'ingestion n'a pas encore tourné
+    for ddl in [
+        "ALTER TABLE stations ADD COLUMN IF NOT EXISTS ele REAL",
+        "ALTER TABLE pois ADD COLUMN IF NOT EXISTS ele REAL",
+        "ALTER TABLE station_poi ADD COLUMN IF NOT EXISTS climb_m INTEGER",
+    ] {
+        sqlx::query(ddl).execute(db).await?;
+    }
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS station_services (
             station_id BIGINT NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
@@ -103,7 +118,7 @@ pub async fn pois_near_station(
     limit: i64,
 ) -> sqlx::Result<Vec<PoiNearStation>> {
     sqlx::query_as::<_, PoiNearStation>(&format!(
-        "SELECT {POI_COLS}, sp.walk_minutes, sp.distance_m
+        "SELECT {POI_COLS}, sp.walk_minutes, sp.distance_m, sp.climb_m
          FROM station_poi sp JOIN pois p ON p.id = sp.poi_id
          WHERE sp.station_id = $1 AND sp.walk_minutes <= $2 AND ($3::text IS NULL OR $3 = ANY(p.tags))
          ORDER BY sp.walk_minutes, p.name
@@ -276,7 +291,7 @@ pub async fn candidates(
                 CASE WHEN s.id = $1 THEN 0 ELSE t.minutes END AS travel_minutes,
                 CASE WHEN s.id = $1 THEN 0 ELSE t.nb_changes END AS nb_changes,
                 t.example_departure,
-                {POI_COLS}, sp.walk_minutes, sp.distance_m,
+                {POI_COLS}, sp.walk_minutes, sp.distance_m, sp.climb_m,
                 CASE WHEN $4 = '' THEN 0::real
                      ELSE ts_rank(p.tsv, websearch_to_tsquery('french', $4)) END AS text_rank
          FROM stations s
@@ -315,8 +330,9 @@ pub async fn candidates_around_point(
                 CASE WHEN s.id = $1 THEN 0 ELSE t.nb_changes END AS nb_changes,
                 t.example_departure,
                 {POI_COLS},
-                greatest(1, ceil(ST_Distance(s.geom, p.geom) * 1.3 / (5000.0 / 60)))::int AS walk_minutes,
+                {WALK_SQL} AS walk_minutes,
                 round(ST_Distance(s.geom, p.geom))::int AS distance_m,
+                {CLIMB_SQL} AS climb_m,
                 CASE WHEN $3 = '' THEN 0::real
                      ELSE ts_rank(p.tsv, websearch_to_tsquery('french', $3)) END AS text_rank
          FROM stations s
@@ -345,8 +361,9 @@ pub async fn pois_around_point(
 ) -> sqlx::Result<Vec<PoiNearStation>> {
     sqlx::query_as::<_, PoiNearStation>(&format!(
         "SELECT {POI_COLS},
-                greatest(1, ceil(ST_Distance(s.geom, p.geom) * 1.3 / (5000.0 / 60)))::int AS walk_minutes,
-                round(ST_Distance(s.geom, p.geom))::int AS distance_m
+                {WALK_SQL} AS walk_minutes,
+                round(ST_Distance(s.geom, p.geom))::int AS distance_m,
+                {CLIMB_SQL} AS climb_m
          FROM stations s
          JOIN pois p ON ST_DWithin(p.geom, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4)
          WHERE s.id = $1

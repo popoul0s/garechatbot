@@ -102,6 +102,7 @@ python run_all.py rail          # tracé réel des voies (SNCF Open Data, ou --r
 python run_all.py sncf
 python run_all.py osm
 python run_all.py lakes         # rives des lacs (si l'import OSM date d'avant cette étape)
+python run_all.py elevation     # altitudes IGN : la montée compte dans le temps de marche
 python run_all.py services --osm-limit 220   # infos pratiques des gares (toilettes, wifi, horaires, vélos, bus...)
 python run_all.py datatourisme --datatourisme <archive ou dossier du flux>
 python run_all.py stats
@@ -131,6 +132,8 @@ cd frontend && npm install && npm run dev
 - **Horaires GTFS**, calculés par l'API : trains par jour, premier et dernier départ, gares desservies en direct, directions, lignes.
 
 Ces infos s'affichent dans la fiche de la gare. Lors d'une question posée sur une gare, elles sont transmises à l'IA comme faits vérifiables.
+
+**Temps de marche.** Distance à vol d'oiseau x 1,3 (détours), à 5 km/h, **plus 10 minutes par 100 m de montée** (règle de randonnée classique). Les altitudes viennent de l'étiquette `ele` d'OpenStreetMap ou de l'API altimétrique de l'IGN (`python run_all.py elevation`, gratuite, sans clé, puis `link` est relancé). Sans altitude connue, le dénivelé n'est pas compté. Le dénivelé s'affiche à côté du temps (« 72 min · +512 m »).
 
 **Lieux sans nom.** Dans OSM, beaucoup d'aires de jeux, de points de vue ou de coins de pêche n'ont pas de nom : ils reçoivent un nom générique (« Aire de jeux », « Point de vue »). Leur intérêt est fixé à 0,35. Ils ne sont proposés que s'ils répondent à une envie précise (enfants, panorama, pêche) et non à « nature » seule. Ils n'apparaissent pas sur la carte d'ensemble, et la fiche d'une gare permet de les afficher sur demande. La source (OpenStreetMap ou DATAtourisme) est indiquée sur chaque lieu.
 

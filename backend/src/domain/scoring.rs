@@ -120,7 +120,14 @@ pub fn rank(rows: Vec<CandidateRow>, criteria: &Criteria, limit: usize) -> Vec<R
                     let m = poi_match(&r, &wanted, has_keywords);
                     // un lac qui correspond vaut plus qu'un square qui correspond
                     let relevance = m * (0.4 + 0.6 * r.poi.interest);
-                    PoiHit { poi: r.poi, walk_minutes: r.walk_minutes, distance_m: r.distance_m, match_score: m, relevance }
+                    PoiHit {
+                        poi: r.poi,
+                        walk_minutes: r.walk_minutes,
+                        distance_m: r.distance_m,
+                        climb_m: r.climb_m,
+                        match_score: m,
+                        relevance,
+                    }
                 })
                 .filter(|h| h.match_score > 0.0)
                 .collect();
@@ -226,7 +233,11 @@ fn build_facts(row: &CandidateRow, hits: &[PoiHit]) -> Vec<String> {
     }
     for h in hits.iter().take(3) {
         let tags = if h.poi.tags.is_empty() { String::new() } else { format!(" [{}]", h.poi.tags.join(", ")) };
-        facts.push(format!("{} à {} min à pied de la gare{tags}", h.poi.name, h.walk_minutes));
+        let climb = match h.climb_m {
+            Some(c) if c >= 50 => format!(" (dont {c} m de montée)"),
+            _ => String::new(),
+        };
+        facts.push(format!("{} à {} min à pied de la gare{climb}{tags}", h.poi.name, h.walk_minutes));
     }
     facts
 }
@@ -271,6 +282,7 @@ mod tests {
             },
             walk_minutes: walk,
             distance_m: walk * 70,
+            climb_m: None,
             text_rank: 0.0,
         }
     }

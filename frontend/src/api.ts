@@ -61,6 +61,8 @@ export interface StationDetailData {
 export interface PoiNearStation extends Poi {
   walk_minutes: number;
   distance_m: number;
+  /** Dénivelé positif depuis la gare, en mètres (déjà compté dans walk_minutes). */
+  climb_m?: number | null;
 }
 
 export interface PoiHit extends PoiNearStation {
