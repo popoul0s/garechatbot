@@ -213,7 +213,12 @@ export default function MapView(props: Props) {
     );
     (m.getSource("lines") as GeoJSONSource).setData(mode === "overview" ? (lines ?? EMPTY) : EMPTY);
 
-    if (originLngLat && mode !== "detail") {
+    // la gare de départ peut être elle-même une destination proposée (« sur place ») :
+    // une seule étiquette, celle de la destination, qui le signale
+    const originId = Number(origin?.properties?.id);
+    const originInResults = mode === "results" && results.some((r) => r.station.id === originId);
+
+    if (originLngLat && mode !== "detail" && !originInResults) {
       // la gare de départ est cliquable : ce qu'il y a à faire sur place, sans prendre le train
       const div = el("origin-marker clickable", `Départ · ${escapeHtml(originName ?? "")}`, "Voir ce qu'il y a autour");
       div.addEventListener("click", () => cb.current.onSelectStation(Number(origin?.properties?.id)));
@@ -228,7 +233,9 @@ export default function MapView(props: Props) {
       results.forEach((r, i) => {
         const div = el(
           "dest-marker",
-          `<span class="n">${i + 1}</span><span class="label">${escapeHtml(r.station.name)}</span>`,
+          `<span class="n">${i + 1}</span><span class="label">${escapeHtml(r.station.name)}${
+            r.station.id === originId ? " · votre départ" : ""
+          }</span>`,
           "Voir ce qu'il y a autour",
         );
         div.addEventListener("click", () => cb.current.onSelectStation(r.station.id));
